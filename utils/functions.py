@@ -7,6 +7,9 @@ from utils.config import SQL_PATH
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+import os
+import re
+
 _cached_data = None
 
 
@@ -351,6 +354,18 @@ def load_menu_hints():
 		return json.load(file)
 
 menu_hints = load_menu_hints()
+
+# очистка имени файла от запрещенных символов
+def clean_filename(filename):
+    """
+    Очищает имя файла от недопустимых символов.
+    Заменяет запрещённые символы на "_" и убирает лишние пробелы.
+    """
+    # Заменяем недопустимые символы на "_"
+    cleaned = re.sub(r'[\\/*?:"<>|()]', '_', filename)
+    # Убираем лишние пробелы
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
 
 
 def plot_supplier_prices_by_currency(results_by_currency):

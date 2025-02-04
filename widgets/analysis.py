@@ -332,5 +332,75 @@ def network_analysis(df):
 			return result
 		except Exception as e:
 			print(f"Ошибка при завершении метода: {e}")
+			
+def lotcount_peryear(df):
+	print('Загружается модуль подсчета количества лотов')
+	# тело модуля подсчета кол-ва лотов
+	# Добавляем колонку quarter
+	
+	project_name = df['project_name'].iloc[0] if 'project_name' in df.columns else "Неизвестный проект"
+	year = df['close_date'].dt.year.iloc[0] if 'close_date' in df.columns else "Неизвестный год"
+	
+	df['quarter'] = df['close_date'].dt.quarter
+	# Подсчитываем количество лотов по дисциплинам и кварталам, добавляя номера лотов
+	df_grouped = (
+		df.groupby(['discipline', 'quarter'])
+		.agg(
+			lot_count=('lot_number', 'nunique'),  # Подсчет уникальных lot_number
+			lot_numbers=('lot_number', lambda x: ', '.join(map(str, x.unique())))  # Список уникальных номеров лотов
+		)
+		.reset_index()
+		.rename(columns={'quarter': 'Квартал'})  # Переименование столбца
+	)
+	
+	# Подготовим данные для визуализации
+	df_pivot = df_grouped.pivot(index='discipline', columns='Квартал', values='lot_count').fillna(0)
+	
+	# Создаем визуализацию
+	ax = df_pivot.plot(
+		kind='bar',
+		stacked=True,
+		figsize=(10, 6),
+		color=['blue', 'green', 'orange', 'red'] # Цвета для кварталов
+	)
+	# Добавляем подписи значений на каждом блоке
+	for container in ax.containers:
+		for bar in container:
+			height = bar.get_height()
+			if height > 0:  # Показывать только ненулевые значения
+				ax.text(
+					bar.get_x() + bar.get_width() / 2,  # Координата X
+					bar.get_y() + height / 2,  # Координата Y
+					f'{int(height)}',  # Значение (округляем до целого числа)
+					ha='center',  # Горизонтальное выравнивание
+					va='center',  # Вертикальное выравнивание
+					fontsize=8,  # Размер шрифта
+					color='white' if height > 5 else 'black'  # Цвет текста
+				)
+	
+	# Настройка графика
+	plt.title(f"Количество лотов по проекту {project_name} за {year} год")
+	plt.xlabel("Дисциплина")
+	plt.ylabel("Количество лотов")
+	plt.legend(
+		title="Квартал",
+		loc="upper right",
+		labels=["1 квартал", "2 квартал", "3 квартал", "4 квартал"]
+	)
+	plt.tight_layout()
+	
+	# Сохраняем результаты
+	pure_project_name = project_name.replace(' ', '_').replace(':', '').replace('/', '_')
+	output_folder = r"D:\Analysis-Results\Statistics"
+	os.makedirs(output_folder, exist_ok=True)  # Создаем папку, если она не существует
+	
+	# Сохраняем график в PNG
+	graph_path = os.path.join(output_folder, f"{pure_project_name}_{year}_chart.png")
+	plt.savefig(graph_path, dpi=300)
+	plt.close()  # Закрываем график
+	
+	output_path = os.path.join(output_folder, f"{pure_project_name}_{year}_statistics.xlsx")
+	df_grouped.to_excel(output_path, index=False)
+	print(f"Результаты сохранены в файл: {output_path}")
 	
 		

@@ -108,6 +108,7 @@ class TabWidget(QWidget):
 			unique_values = sorted(filtered_df[col].dropna().unique())
 			list_widget.addItems([str(value) for value in unique_values])
 			search_entry.clear()
+			
 			list_widget.full_list = [str(value) for value in unique_values]
 	
 	def clear_list_widgets(self):

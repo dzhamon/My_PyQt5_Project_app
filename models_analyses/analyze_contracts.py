@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QPushButton, QTableView, QAbs
                              QSizePolicy)
 from utils.PandasModel_previous import PandasModel
 import pandas as pd
-from utils.functions_from041124 import convert_to_eur, save_analysis_results
+from utils.functions import CurrencyConverter, save_analysis_results
 from prophet import Prophet
 
 
@@ -169,15 +169,15 @@ def analyzeNonEquilSums(data_df, contract_df):
 
 """
 	Тренд - анализ контрарактных данных
-
 """
-
-
 def show_interactive_trend(filtered_df, output_folder):
 	"""
    Показывает интерактивный график трендов стоимости контрактов для каждой дисциплины (топ-5 поставщиков).
    """
-	filtered_df = convert_to_eur(filtered_df)
+	columns_info = [('unit_price', 'contract_currency', 'unit_price_eur'),
+	                ('total_contract_amount', 'contract_currency', 'total_contract_amount_eur')]
+	converter = CurrencyConverter()
+	filtered_df = converter.convert_multiple_columns(filtered_df, columns_info)
 	
 	# Убедимся, что папка для сохранения существует
 	if not os.path.exists(output_folder):

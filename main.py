@@ -8,15 +8,14 @@ import sys
 import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QAction, QInputDialog, QLabel,
                              QStatusBar, QProgressBar, QTabWidget, QVBoxLayout, QMessageBox, QWidget)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QPoint
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QPoint, QMetaObject
 from PyQt5.QtWidgets import QToolTip
 from PyQt5.QtGui import QFont, QCursor
 
 from widgets.module_tab1 import Tab1Widget
-# from widgets.module_tab2 import Tab2
-from widgets.module_universe import TabWidget
+from widgets.module_tab2 import Tab2Widget
 from widgets.module_tab3 import Tab3Widget
-# from widgets.module_tab4 import Tab4
+from widgets.module_tab4 import Tab4Widget
 import json
 import pandas as pd
 
@@ -27,19 +26,27 @@ def load_menu_hints():
 		return json.load(file)
 
 
-class DataCleanerThread(QThread):
-	progress_changed = pyqtSignal(int)
-	
-	def run(self):
-		"""Выполнение очистки данных в фоновом потоке."""
-		self.progress_changed.emit(0)
-		clean_database()
-		self.progress_changed.emit(100)
-
-
 def clicked_connect(self):
 	"""эта функция вызывает метод open_file из класса Data_model модуля data_model.py"""
 	DataModel(self).open_file_dialog()
+
+
+class AnalysisThread(QThread):
+	update_progress = pyqtSignal(int)  # сигнал для обновления прогресса
+	create_plot = pyqtSignal(str, pd.DataFrame)
+	
+	def __init__(self, analysis_method, create_plot=False, *args, **kwargs):
+		super().__init__()
+		self.analysis_method = analysis_method
+		self.create_plot = create_plot
+		self.args = args
+		self.kwargs = kwargs
+		self
+	
+	def run(self):
+		# Передаем сигнал update_progress в метод анализа
+		self.analysis_method(update_progress=self.update_progress, create_plot=self.create_plot, *self.args,
+		                     **self.kwargs)
 
 
 class MyTabWidget(QWidget):
@@ -60,7 +67,7 @@ class MyTabWidget(QWidget):
 		# Инициализация QLabel для отображения подсказок
 		self.tooltip_label = QLabel(self)
 		self.tooltip_label.setStyleSheet(
-			"background-color: yellow; color: black; padding: 5px; border: 1px solid black;")
+			"background-color: yellow; color: black; font-size: 12px; padding: 5px; border: 1px solid black;")
 		self.tooltip_label.hide()  # Скрываем по умолчанию
 	
 	def showTooltip(self, text, x=20, y=20):
@@ -80,15 +87,18 @@ class MyTabWidget(QWidget):
 	
 	def setup_tabs(self, contracts_count, future_dates_count, invalid_year_count, missing_unit_price_count,
 	               negative_price_count, invalid_signing_date_count, missing_executor_dak_count):
+		# создание отдельных вкладок
 		tab1 = Tab1Widget(self.data_df)
-		tab2 = TabWidget(
-			['lot_number', 'project_name', 'discipline', 'actor_name', 'winner_name', 'currency', 'good_name'])
+		params_for_tab2 = ['lot_number', 'project_name', 'discipline', 'actor_name', 'winner_name', 'currency',
+		                   'good_name']
+		tab2 = Tab2Widget(params_for_tab2)
 		tab3 = Tab3Widget(self.contract_df, contracts_count, future_dates_count, invalid_year_count,
 		                  missing_unit_price_count, negative_price_count, invalid_signing_date_count,
 		                  missing_executor_dak_count)
-		tab4 = TabWidget(
-			['lot_number', 'discipline', 'contract_name', 'executor_dak', 'counterparty_name', 'product_name',
-			 'contract_currency'])
+		params_for_tab4 = ['lot_number', 'discipline', 'contract_name', 'executor_dak', 'counterparty_name',
+		                   'product_name',
+		                   'contract_currency']
+		tab4 = Tab4Widget(params_for_tab4)
 		
 		self.notebook.addTab(tab1, 'Данные по Лотам')
 		self.notebook.addTab(tab2, 'Параметры загруженных Лотов')
@@ -97,7 +107,7 @@ class MyTabWidget(QWidget):
 		
 		# подключаем сигнал для взаимодействия между вкладками
 		tab1.filtered_data_changed.connect(tab2.update_data)
-		tab1.filtered_data_changed.connect(tab3.update_contract_data)
+		tab3.filtered_contracts_changed.connect(tab4.update_data)
 		# Подключение сигнала от Tab3 к Tab4 для передачи отфильтрованных контрактов
 		tab3.filtered_contracts_changed.connect(tab4.on_filtered_contracts_received)
 		print("MyTabWidget: Вкладки успешно созданы")  # Отладочный принт
@@ -151,16 +161,16 @@ class Window(QMainWindow):
 		
 		# Подключение сигнала для получения отфильтрованных данных
 		tab2_widget = self.tab_widget.notebook.widget(1)  # Получаем второй виджет вкладки (Tab2)
-		if isinstance(tab2_widget, TabWidget):
+		if isinstance(tab2_widget, Tab2Widget):
 			tab2_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Подключение сигнала для обновления данных между вкладками
 		tab3_widget = self.tab_widget.notebook.widget(2)
-		if isinstance(tab3_widget, TabWidget):
-			tab3_widget.data_ready_for_analysis.connect(self.update_tab3_data)
+		if isinstance(tab3_widget, Tab3Widget):
+			tab3_widget.filtered_contracts_changed.connect(self.update_tab3_data)
 		
 		tab4_widget = self.tab_widget.notebook.widget(3)
-		if isinstance(tab4_widget, TabWidget):
+		if isinstance(tab4_widget, Tab4Widget):
 			tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Настройка главного окна
@@ -188,7 +198,7 @@ class Window(QMainWindow):
 	
 	def update_tab3_data(self, updated_contract_df):
 		# Логика обновления данных на вкладке 3
-		self.tab_widget.notebook.widget(2).update_data(updated_contract_df)
+		self.tab_widget.notebook.widget(2).update_contract_data(updated_contract_df)
 		print("Данные для вкладки 3 обновлены")
 	
 	def _createMenuBar(self):
@@ -213,6 +223,7 @@ class Window(QMainWindow):
 		analysisMenu.addAction(self.efficiency_analyses_action)
 		analysisMenu.addAction(self.suppliers_by_unit_price_action)
 		analysisMenu.addAction(self.find_cross_discipline_lotsAction)
+		analysisMenu.addAction(self.lotcount_peryearAction)
 		
 		# Меню Анализ по Контрактам
 		analysisMenuContract = menuBar.addMenu('Анализ данных по Контрактам')
@@ -220,8 +231,9 @@ class Window(QMainWindow):
 		analysisMenuContract.addAction(self.trend_analyses_action)
 		analysisMenuContract.addAction(self.prophet_arima_action)
 		analysisMenuContract.addAction(self.contracts_less_dates_action)
+		analysisMenuContract.addAction(self.herfind_hirshman_action)
 	
-	def setActionTooltip(self, action, group, hint_key, x=20, y=20):
+	def setActionTooltip(self, action, group, hint_key, x=0, y=0):
 		hint_text = self.menu_hints.get(group, {}).get(hint_key, "Нет инструкции для этого пункта")
 		action.hovered.connect(lambda: self.tab_widget.showTooltip(hint_text))
 		action.triggered.connect(self.tab_widget.hideTooltip)
@@ -268,6 +280,10 @@ class Window(QMainWindow):
 		self.setActionTooltip(self.find_cross_discipline_lotsAction, "Анализ данных по Лотам", "menu_item_9",
 		                      x=20, y=20)
 		
+		self.lotcount_peryearAction = QAction("Количество лотов по дисциплинам по-квартально", self)
+		self.setActionTooltip(self.lotcount_peryearAction, "Анализ данных по Лотам", "menu_item_10",
+		                      x=20, y=20)
+		# ================================================
 		# Действия для меню Анализ данных по Контрактам
 		self.analyzeNoneEquilSums = QAction('Поиск и анализ несоответствий в суммах Лотов и Контрактов', self)
 		self.setActionTooltip(self.analyzeNoneEquilSums, "Анализ данных по Контрактам", "menu_item_1", x=450, y=20)
@@ -281,6 +297,8 @@ class Window(QMainWindow):
 		self.contracts_less_dates_action = QAction('Поиск и анализ контрактов с инвалидными датами ', self)
 		self.setActionTooltip(self.contracts_less_dates_action, "Анализ данных по Контрактам", "menu_item_4", x=450,
 		                      y=20)
+		self.herfind_hirshman_action = QAction("Метод Херфиндаля-Хиршмана", self)
+		self.setActionTooltip(self.herfind_hirshman_action, "Анализ данных по Контрактам", "menu_item_5", x=450, y=20)
 	
 	def _connectActions(self):
 		# Подключение сигналов к действиям
@@ -298,40 +316,58 @@ class Window(QMainWindow):
 		self.efficiency_analyses_action.triggered.connect(self.run_efficiency_analyses)
 		self.suppliers_by_unit_price_action.triggered.connect(self.run_analyze_by_unit_price)
 		self.find_cross_discipline_lotsAction.triggered.connect(self.run_find_cross_discipline_lots)
+		self.lotcount_peryearAction.triggered.connect(self.run_lotcount_peryear)
 		
 		# Подключение сигналов к методам Анализа данных по Контрактам
 		self.analyzeNoneEquilSums.triggered.connect(self.run_analyzeNonEquilSums)
 		self.trend_analyses_action.triggered.connect(self.run_trend_analyses)
 		self.prophet_arima_action.triggered.connect(self.run_prophet_and_arima)
 		self.contracts_less_dates_action.triggered.connect(self.run_contracts_less_dates)
+		self.herfind_hirshman_action.triggered.connect(self.run_herfind_hirshman_analysis)
 	
 	def set_filtered_data(self, df):
 		"""Устанавливает отфильтрованный DataFrame для анализа."""
 		self.filtered_df = df
-		print("Обновленные данные для анализа:")
-		print(self.filtered_df.head())  # Вывод первых строк DataFrame для проверки
+		# print("Обновленные данные для анализа:")
+		# print(self.filtered_df.head())  # Вывод первых строк DataFrame для проверки
 		QMessageBox.information(self, "Информация", "Данные для анализа успешно обновлены.")
 	
 	def run_clean_data(self):
-		# self.progress_bar.setValue(0)
 		clean_database()
 	
-	# self.progress_bar.setValue(100)
+	def start_analysis(self, analysis_task, on_finished_callback):
+		# для формирования прогресс-бара
+		"""
+		   Запускает анализ в отдельном потоке.
+		   :param analysis_task: Метод, который будет выполнять анализ.
+		   :param on_finished_callback: Метод, который будет вызван после завершения анализа.
+		   """
+		# Сброс прогресс-бара
+		self.progress_bar.setValue(0)
+		
+		# Создание и настройка потока
+		self.analysis_thread = AnalysisThread(analysis_task)
+		self.analysis_thread.update_progress.connect(self.progress_bar.setValue)  # Обновление прогресс-бара
+		self.analysis_thread.finished.connect(on_finished_callback)  # Уведомление о завершении
+		
+		# Запуск потока
+		self.analysis_thread.start()
+	
+	def on_analysis_finished(self):
+		QMessageBox.information(self, "Завершено", "Анализ завершен!")
 	
 	def run_kpi_analysis(self):
 		"""Запуск анализа KPI с использованием отфильтрованных данных."""
 		if self.filtered_df is not None:
+			self.progress_bar.setValue(0)
 			from models_analyses.MyLotAnalyzeKPI import LotAnalyzeKPI
 			
 			# Передаем отфильтрованные данные в KPI анализатор
 			kpi_analyzer = LotAnalyzeKPI(self.filtered_df)
 			self.df_kpi_normalized = kpi_analyzer.calculate_kpi(self.filtered_df)
-			print("Содержимое self.df_kpi_normalized после вычисления:")
-			print(self.df_kpi_normalized.describe())
 			
 			# Визуализация KPI
 			self.visualize_kpi()
-			
 			QMessageBox.information(self, "KPI Анализ", "KPI анализ успешно завершен.")
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет отфильтрованных данных для анализа KPI.")
@@ -476,29 +512,38 @@ class Window(QMainWindow):
 		main_method(self.filtered_df, self.data_df)
 	
 	def run_analyze_by_unit_price(self):
+		"""
+		Запуск Ранжирование поставщиков по цене товара за единицу
+		"""
+		self.start_analysis(
+			analysis_task=self._analyze_by_unit_price_task,
+			on_finished_callback=self.on_analysis_finished
+		)
+	
+	def _analyze_by_unit_price_task(self, update_progress, create_plot):
 		from models_analyses.efficiency_analyses import analyze_suppliers_by_unit_price
-		analyze_suppliers_by_unit_price(self, self.filtered_df, self.data_df)
+		update_progress.emit(10)
+		analyze_suppliers_by_unit_price(self, self.filtered_df, update_progress, create_plot)
+		update_progress.emit(100)
 	
 	def run_find_cross_discipline_lots(self):
-		import os
+		"""
+			Поиск поставщиков общих для разных дисциплин
+		"""
 		# Шаг 1. Находим общих поставщиков для дисциплин
 		from models_analyses.analysis import find_common_suppliers_between_disciplines
 		common_suppliers_df = find_common_suppliers_between_disciplines(self.filtered_df)
 		if not common_suppliers_df.empty:
-			print(common_suppliers_df.columns)
 			from models_analyses.analysis import compare_materials_and_prices
 			# Шаг 2. Сравниваем цены за единицу продукции
 			comparison_results = compare_materials_and_prices(self.filtered_df, common_suppliers_df)
+
 			if not comparison_results.empty:
-				print("Сравнение материалов и цен между дисциплинами:")
-				print(comparison_results.columns)
-				
 				# Шаг 3. Визуализация
 				from utils.vizualization_tools import visualize_price_differences, heatmap_common_suppliers
-				print('Эти данные отправляются на визуализацию')
-				print(comparison_results.columns)
 				visualize_price_differences(comparison_results)
 				heatmap_common_suppliers(common_suppliers_df)
+		
 				# Шаг 4. Статистика
 				from models_analyses.analysis import matches_results_stat
 				matches_results_stat(comparison_results)
@@ -506,8 +551,52 @@ class Window(QMainWindow):
 				print("Нет данных для сравнения материалов и цен.")
 		else:
 			print("Общие поставщики между дисциплинами не найдены.")
-
-
+	
+	def run_lotcount_peryear(self):
+		self.progress_bar.setValue(0)  # сброс прогресс-бара
+		self.analysis_thread = AnalysisThread(self._lotcount_peryear_task)
+		self.analysis_thread.update_progress.connect(self.progress_bar.setValue)  # Обновляем прогресс-бар
+		self.analysis_thread.finished.connect(self.on_analysis_finished)  # Уведомление о завершении
+		self.analysis_thread.start()
+	
+	# def on_analysis_finished(self):
+	# 	QMessageBox.information(self, "Завершено", "Анализ завершен!")
+	
+	def _lotcount_peryear_task(self):
+		# метод посчета и визуализации количества лотов по дисциплинам по-квартально за год по проекту
+		from widgets.analysis import lotcount_peryear
+		lotcount_peryear(self.filtered_df)
+		self.analysis_thread.update_progress.emit(100)
+	
+	def run_herfind_hirshman_analysis(self):
+		# создадим поток, для выпонения анализа
+		self.progress_bar.setValue(0)
+		self.analysis_thread = AnalysisThread(self._herfind_hirshman_analysis_task)
+		self.analysis_thread.update_progress.connect(self.progress_bar.setValue)  # Обновляем прогресс-бар
+		self.analysis_thread.finished.connect(self.on_analysis_finished)
+		self.analysis_thread.start()
+	
+	def on_analysis_finished(self):
+		QMessageBox.information(self, "Завершено", "Анализ завершен!")
+	
+	def _herfind_hirshman_analysis_task(self):
+		from widgets.analysisWidget import calculate_herfind_hirshman, find_alternative_suppliers
+		from utils.vizualization_tools import save_herfind_hirshman_results
+		
+		# Обновляем прогресс-бар
+		self.analysis_thread.update_progress.emit(10)
+		
+		# Выполняем расчет индекса Херфиндаля-Хиршмана
+		supplier_stats, hhi = calculate_herfind_hirshman(self.filtered_df, self.contract_df)
+		self.analysis_thread.update_progress.emit(50)
+		
+		# Сохраняем результаты
+		all_major_suppliers = save_herfind_hirshman_results(supplier_stats, hhi)
+		self.analysis_thread.update_progress.emit(75)
+		
+		# Поиск альтернативных поставщиков
+		find_alternative_suppliers(all_major_suppliers, self.filtered_df)
+		self.analysis_thread.update_progress.emit(100)
 
 
 if __name__ == "__main__":

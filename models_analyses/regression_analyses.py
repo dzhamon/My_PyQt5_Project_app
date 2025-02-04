@@ -2,7 +2,7 @@
 
 import pandas as pd
 import numpy as np
-from utils.functions_from041124 import convert_to_eur
+from utils.functions import CurrencyConverter
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 
@@ -13,22 +13,20 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 def regresion_analyses(filtered_df, contract_df):
 	
-	# Получаем список номеров лотов, связанных с этими проектами
+	# Получаем список номеров лотов, связанных с отфильтрованным проектом
 	lot_numbers = filtered_df['lot_number'].unique()
 	
 	# Фильтруем контракты в таблице data_contract по номерам лотов
 	filtered_contracts = contract_df[contract_df['lot_number'].isin(lot_numbers)]
 	
-	# Продолжаем с фильтрованными контрактами по проектам для дальнейшего анализа
-	print(filtered_contracts.head())
+	columns_info = [('total_contract_amount', 'contract_currency', 'total_contract_amount_eur')]
 	
 	# все суммы приводим к единой валюте EUR
-	filtered_contracts = convert_to_eur(filtered_contracts)
+	converter = CurrencyConverter()
+	filtered_contracts = converter.convert_multiple_columns(filtered_contracts, columns_info=columns_info)
 	
 	# Преобразуем даты подписания контрактов в месячный формат
 	filtered_contracts['contract_signing_month'] = filtered_contracts['contract_signing_date'].dt.to_period('M')
-	
-	#print(filtered_contracts[['contract_signing_month', 'counterparty_name', 'total_contract_amount_eur']].isnull().sum())
 	
 	# Убедимся, что нет пропущенных данных
 	filtered_contracts = filtered_contracts.dropna(

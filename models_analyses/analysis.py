@@ -4,6 +4,7 @@ import gc
 import networkx as nx
 import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import QMetaObject, Qt
 from utils.vizualization_tools import save_top_suppliers_bar_chart
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -198,9 +199,6 @@ def analyze_supplier_frequency(df, output_dir="D:/Analysis-Results/Supplier-Freq
 			file_path = os.path.join(discipline_dir, f"{actor_name}_supplier_frequency.png")
 			plt.savefig(file_path)
 			plt.close()
-			
-			print(f"График сохранен: {file_path}")
-	
 	return top_suppliers
 
 
@@ -208,8 +206,7 @@ def network_analysis(parent_widget, df):
 	"""
 	:param df: отфильтрованный датафрейм по одному проекту
 	:return: None
-	Использован алгоритм Fruchterman-Reingold Algorithm и
-	kamada_kawai - алгоритм упругих взаимодействий
+	Использованы алгоритмы Fruchterman-Reingold Algorithm и kamada_kawai
 	"""
 	print('Запускается метод сетевого анализа и построения графов')
 	
@@ -222,6 +219,12 @@ def network_analysis(parent_widget, df):
 	
 	output_folder = 'D:/Analysis-Results/network_graphs'
 	os.makedirs(output_folder, exist_ok=True)
+	
+	# Список алгоритмов размещения
+	layouts = {
+		'spring': nx.spring_layout,
+		'kamada_kawai': nx.kamada_kawai_layout,
+	}
 	
 	# Перебираем все уникальные валюты для данного проекта
 	for currency in unique_currencies:
@@ -253,77 +256,45 @@ def network_analysis(parent_widget, df):
 				# Добавляем связь дисциплина - поставщик
 				G.add_edge(discipline, supplier)
 		
-		# Оптимизация размещения узлов (алгоритм spring_layout)
-		pos = nx.spring_layout(G, k=0.5, iterations=50, seed=42)
-		
-		# получение цветов узлов из атрибутов
-		node_colors = [data['color'] for _, data in G.nodes(data=True)]
-		
-		# Визуализация сети
-		plt.figure(figsize=(15, 10))
-		nx.draw(G, pos, with_labels=True, node_size=700, node_color=node_colors, font_size=6, font_color='black',
-		        edge_color='gray')
-		plt.title(f'Network for {selected_project} in {currency}')
-		
-		# Сохранение графика в файл
-		file_path = os.path.join(output_folder, f'network_{selected_project}_{currency}.png')
-		plt.savefig(file_path)
-		plt.close('all')
-		gc.collect()
-	
-	# Создание объединенной сети для всех валют
-	G_combined = nx.Graph()
-	G_combined.add_nodes_from(df['discipline'].unique(), type='discipline', color='green')
-	G_combined.add_nodes_from(df['winner_name'].unique(), type='supplier', color='lightblue')
-	G_combined.add_node(selected_project, type='project', color='red')  # Узел для проекта
-	
-	# Добавление связей на основе всех данных проекта
-	for _, row in df.iterrows():
-		discipline = row['discipline']
-		supplier = row['winner_name']
-		
-		# Проверка на наличие дисциплины и поставщика
-		if pd.notna(discipline) and pd.notna(supplier):
-			# Добавление связей (ребер) между узлами
-			G_combined.add_edge(selected_project, discipline)  # Связь проект - дисциплина
-			G_combined.add_edge(discipline, supplier)  # Связь дисциплина - поставщик
-	
-	# Список различных алгоритмов размещения
-	layouts = {
-		'spring': nx.spring_layout,
-		'kamada_kawai': nx.kamada_kawai_layout,
-	}
-	
-	# Перебор всех вариантов размещения
-	for layout_name, layout_func in layouts.items():
-		print(f"Построение графика с размещением: {layout_name}")
-		# вычисление координат узлов
-		try:
-			pos_combined = layout_func(G_combined, seed=42) if layout_name == 'spring' else layout_func(G_combined)
-		except Exception as e:
-			print(f"Ошибка при вычислении layout {layout_name}: {e}")
-			continue
-		
-		# Получение цветов узлов из атрибутов
-		node_colors_combined = [data['color'] for _, data in G_combined.nodes(data=True)]
-		
-		# Визуализация сети с выбранным размещением
-		plt.figure(figsize=(15, 10))
-		nx.draw(G_combined, pos_combined, with_labels=False, node_size=700, node_color=node_colors_combined,
-		        edge_color='gray')
-		nx.draw_networkx_labels(G_combined, pos_combined, font_size=8, font_color='black')
-		plt.title(f'Combined Network for {selected_project} (All Currencies) - {layout_name.capitalize()} Layout')
-		
-		# Сохранение графика в файл в указанной папке
-		file_path = os.path.join(output_folder, f'combined_network_{selected_project}_all_currencies_{layout_name}.png')
-		try:
-			plt.savefig(file_path)
-			print(f"Объединенный график с размещением {layout_name} сохранен: {file_path}")
-		except Exception as error:
-			print(f"Ошибка при сохранении графика {layout_name}: {error}")
-		finally:
-			plt.close('all')
-			gc.collect()
+		# Перебираем все алгоритмы размещения
+		for layout_name, layout_func in layouts.items():
+			print(f"Построение графика для {currency} с размещением: {layout_name}")
+			
+			# Оптимизация размещения узлов
+			try:
+				pos = layout_func(G, seed=42) if layout_name == 'spring' else layout_func(G)
+			except Exception as e:
+				print(f"Ошибка при вычислении layout {layout_name}: {e}")
+				continue
+			
+			# Получение цветов узлов из атрибутов
+			node_colors = [data['color'] for _, data in G.nodes(data=True)]
+			
+			# Визуализация сети
+			plt.figure(figsize=(15, 10))
+			nx.draw(G, pos, with_labels=True, node_size=700, node_color=node_colors, font_size=6, font_color='black',
+			        edge_color='gray')
+			# Заголовок
+			title = f'Network for {selected_project} in {currency} - {layout_name.capitalize()} Layout'
+			plt.title(title, fontsize=14)
+			
+			# Расширение области для добавления пояснения
+			plt.subplots_adjust(bottom=0.2)
+			
+			# Добавление пояснения
+			description = f"Project: {selected_project}, Currency: {currency}, Layout: {layout_name.capitalize()}"
+			plt.figtext(0.5, 0.02, description, wrap=True, horizontalalignment='center', fontsize=10)
+			
+			# Сохранение графика в файл
+			file_path = os.path.join(output_folder, f'network_{selected_project}_{currency}_{layout_name}.png')
+			try:
+				plt.savefig(file_path)
+				print(f"График с размещением {layout_name} сохранен: {file_path}")
+			except Exception as error:
+				print(f"Ошибка при сохранении графика {layout_name}: {error}")
+			finally:
+				plt.close('all')
+				gc.collect()
 	
 	QMessageBox.information(parent_widget, "Сообщение",
 	                        f"Метод сетевого анализа завершен. Файлы сохранены в папке {output_folder}")
@@ -356,12 +327,11 @@ def find_common_suppliers_between_disciplines(df):
 			
 			# Если есть общие поставщики, формируем результирующий список
 			if common_suppliers:
-			
 				results.append({
-						'discipline1': discipline1,
-						'discipline2': discipline2,
-						'common_suppliers': list(common_suppliers)
-					})
+					'discipline1': discipline1,
+					'discipline2': discipline2,
+					'common_suppliers': list(common_suppliers)
+				})
 	
 	# Преобразование результатов в DataFrame
 	return pd.DataFrame(results)
@@ -373,7 +343,6 @@ def compare_materials_and_prices(df, common_suppliers_df):
 	converter = CurrencyConverter()
 	df_converted = converter.convert_column(df, amount_column='unit_price', currency_column='currency',
 	                                        result_column='amount_eur')
-	print(df_converted.head(10))
 	
 	results = []
 	
@@ -385,8 +354,10 @@ def compare_materials_and_prices(df, common_suppliers_df):
 		
 		for supplier in common_suppliers:
 			# Фильтруем данные для поставщика в обеих дисциплинах
-			discipline1_data = df_converted[(df_converted['discipline'] == discipline1) & (df_converted['winner_name'] == supplier)]
-			discipline2_data = df_converted[(df_converted['discipline'] == discipline2) & (df_converted['winner_name'] == supplier)]
+			discipline1_data = df_converted[
+				(df_converted['discipline'] == discipline1) & (df_converted['winner_name'] == supplier)]
+			discipline2_data = df_converted[
+				(df_converted['discipline'] == discipline2) & (df_converted['winner_name'] == supplier)]
 			
 			for good_name in set(discipline1_data['good_name']).intersection(set(discipline2_data['good_name'])):
 				discipline1_goods = discipline1_data[discipline1_data['good_name'] == good_name]
@@ -399,9 +370,9 @@ def compare_materials_and_prices(df, common_suppliers_df):
 				lot_numbers_discipline1 = discipline1_goods['lot_number'].unique()
 				lot_numbers_discipline2 = discipline2_goods['lot_number'].unique()
 				
-				persent_of_difference = (price1 - price2)*100/(price1+price2)
-				# if persent_of_difference != 0 and abs(persent_of_difference) > 10:
-				if persent_of_difference > 10:
+				persent_of_difference = (price1 - price2) * 100 / (price1 + price2)
+				
+				if persent_of_difference > 10 or persent_of_difference < -10:
 					results.append({
 						'supplier': supplier,
 						'good_name': good_name,
@@ -409,11 +380,10 @@ def compare_materials_and_prices(df, common_suppliers_df):
 						'discipline2': discipline2,
 						'price_discipline1': price1,
 						'price_discipline2': price2,
-						'price_difference': persent_of_difference,
+						'persent_of_diff': persent_of_difference,
 						'lot_numbers_discipline1': lot_numbers_discipline1.tolist(),
 						'lot_number_discipline2': lot_numbers_discipline2.tolist()
 					})
-	
 	# Преобразуем results в DataFrame
 	results_df = pd.DataFrame(results)
 	
@@ -423,15 +393,13 @@ def compare_materials_and_prices(df, common_suppliers_df):
 	file_path = os.path.join(output_folder, "suppliers_analysis.xlsx")
 	
 	if check_file_access(file_path):
+		# Сохраняем DataFrame в Excel
+		results_df.to_excel(file_path, index=False)
 		print(f"Файл успешно сохранён: {file_path}")
 	else:
 		print("Файл занят, программа не может продолжить работу")
+	
 	return results_df
-	
-	# Сохраняем DataFrame в Excel
-	results_df.to_excel(file_path, index=False)
-	
-
 
 def matches_results_stat(comparison_results):
 	# общее количество совпадений
@@ -439,12 +407,10 @@ def matches_results_stat(comparison_results):
 	unique_suppliers = comparison_results['supplier'].nunique()
 	
 	# Средний процент расхождения цен
-	average_difference = comparison_results['price_difference'].mean()
+	average_difference = comparison_results['persent_of_diff'].mean()
 	
 	# Топ-10 поставщиков по количеству совпадений
 	top_suppliers = comparison_results['supplier'].value_counts().head(10)
-	
-	
 	
 	# Вывод статистики
 	print(f"Общее количество совпадений: {total_matches}")

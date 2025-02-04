@@ -4,11 +4,12 @@ from PyQt5.QtCore import pyqtSignal
 from utils.PandasModel_previous import PandasModel
 import pandas as pd
 
-class Tab2(QWidget):
+class Tab2Widget(QWidget):
 	data_ready_for_analysis = pyqtSignal(pd.DataFrame)
 	
-	def __init__(self):
+	def __init__(self, params_for_tab2):
 		super().__init__()
+		params = params_for_tab2
 		
 		# Создание основного макета
 		self.layout = QVBoxLayout(self)
@@ -74,7 +75,6 @@ class Tab2(QWidget):
 		"""
 		    Фильтрует элементы в списке на основе текста, сохраняя полный список.
 		"""
-		print(f"Фильтрация списка {list_widget.objectName()} по тексту: '{text}'")
 		
 		# Получаем полный список элементов
 		if not hasattr(list_widget, 'full_list'):

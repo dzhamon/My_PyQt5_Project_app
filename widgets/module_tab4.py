@@ -5,11 +5,12 @@ from utils.PandasModel_previous import PandasModel
 import pandas as pd
 
 
-class Tab4(QWidget):
+class Tab4Widget(QWidget):
 	data_ready_for_analysis = pyqtSignal(pd.DataFrame)
 	
-	def __init__(self):
+	def __init__(self, params_for_tab4):
 		super().__init__()
+		params = params_for_tab4
 		# создаем основной макет
 		self.layout = QVBoxLayout(self)
 		# Словарь для хранения QListWidget и их значений
@@ -115,7 +116,6 @@ class Tab4(QWidget):
 		              'counterparty_name', 'product_name', 'contract_currency']
 		
 		for name in list_names:
-			print(f"Инициализация списка для: {name}")
 			widget_layout = QVBoxLayout()  # Используем вертикальный макет для метки, списка и кнопки "Очистить"
 			label = QLabel(f"Выберите {name}:")
 			search_entry = QLineEdit(self)
