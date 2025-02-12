@@ -5,6 +5,7 @@ from functools import reduce
 from datetime import datetime
 from PyQt5.QtWidgets import QMessageBox
 from sklearn.ensemble import IsolationForest
+from utils.metal_weight_calculator import weight_calculator
 from utils.vizualization_tools import plot_bar_chart, visualize_isolation_forest, create_plot_graf
 from utils.functions import CurrencyConverter, clean_filename
 from sklearn.neighbors import LocalOutlierFactor
@@ -372,6 +373,20 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 		# Фильтруем данные для текущего товара
 		filtered_goods = mydata_df[mydata_df['good_name'] == good_name]
 		
+		# Преобразование единиц измерения
+		for index, row in filtered_goods.iterrows():
+			unit = row['supplier_unit']  # Единица измерения поставщика (метр, тонна и т.д.)
+			if unit == "м":
+				# персчитываем метры в тонны
+				weight_per_unit = weight_calculator(row)  # Функция вычисления веса метра
+				
+				if weight_per_unit:
+					filtered_goods.at[index, 'unit_price_eur'] = row['unit_price_eur'] / weight_per_unit
+					
+			elif unit == 'кг':
+				# перерасчет кг в тонны
+				filtered_goods.at[index, 'unit_price_eur'] = row['unit_price_eur'] * 1000  # 1 т = 1000 кг
+		
 		# Группируем по поставщикам
 		supplier_data = (
 			filtered_goods.groupby('winner_name')
@@ -410,28 +425,3 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 	# Завершаем прогресс
 	update_progress.emit(100)
 	return
-		
-	# 	# Очищаем good_name от запрещённых символов
-	# 	cleaned_good_name = clean_filename(good_name)
-	#
-	# 	# Создаём путь для графика
-	# 	png_file = os.path.join(output_folder, f"{cleaned_good_name}_price_analysis.png".replace("/", "_"))
-	#
-	# 	try:
-	# 		# Используем функцию визуализации из модуля
-	# 		plot_bar_chart(
-	# 			x=filtered_data['winner_name'],
-	# 			y=filtered_data['avg_unit_price'],
-	# 			title=f'Средняя цена за единицу для товара: {good_name}',
-	# 			x_label='Поставщик',
-	# 			y_label='Средняя цена за единицу (EUR)',
-	# 			output_file=png_file
-	# 		)
-	# 	except OSError as e:
-	# 		print(f"Ошибка при сохранении графика для товара '{good_name}': {e}")
-	# 	except Exception as e:
-	# 		print(f"Неожиданная ошибка при обработке товара '{good_name}': {e}")
-	# # Отображаем сообщение об успешном завершении
-	# QMessageBox.information(parent_widget, "Результат", f"Все данные выведены в папку '{output_folder}'")
-	#
-	# return
