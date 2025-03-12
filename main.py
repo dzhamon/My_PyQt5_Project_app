@@ -16,6 +16,8 @@ from widgets.module_tab1 import Tab1Widget
 from widgets.module_tab2 import Tab2Widget
 from widgets.module_tab3 import Tab3Widget
 from widgets.module_tab4 import Tab4Widget
+from widgets.module_tab5 import Tab5Widget
+from widgets.module_tab6 import Tab6Widget
 import json
 import pandas as pd
 
@@ -99,17 +101,25 @@ class MyTabWidget(QWidget):
 		                   'product_name',
 		                   'contract_currency']
 		tab4 = Tab4Widget(params_for_tab4)
+		tab5 = Tab5Widget()
+		
+		params_for_tab6 = ['warehouse', 'nomenclature', 'currency', 'stock_category',
+		                   'department', 'project_name', 'date_column']
+		tab6 =Tab6Widget(params_for_tab6)
 		
 		self.notebook.addTab(tab1, 'Данные по Лотам')
 		self.notebook.addTab(tab2, 'Параметры загруженных Лотов')
 		self.notebook.addTab(tab3, 'Данные по Контрактам')
 		self.notebook.addTab(tab4, 'Параметры загруженных Контрактов')
+		self.notebook.addTab(tab5, "Остатки складов")
+		self.notebook.addTab(tab6, "Параметры складов")
 		
 		# подключаем сигнал для взаимодействия между вкладками
 		tab1.filtered_data_changed.connect(tab2.update_data)
 		tab3.filtered_contracts_changed.connect(tab4.update_data)
 		# Подключение сигнала от Tab3 к Tab4 для передачи отфильтрованных контрактов
 		tab3.filtered_contracts_changed.connect(tab4.on_filtered_contracts_received)
+		tab5.filtered_data_changed.connect(tab6.on_filtered_contracts_received)
 		print("MyTabWidget: Вкладки успешно созданы")  # Отладочный принт
 
 
@@ -172,6 +182,14 @@ class Window(QMainWindow):
 		tab4_widget = self.tab_widget.notebook.widget(3)
 		if isinstance(tab4_widget, Tab4Widget):
 			tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
+			
+		tab5_widget = self.tab_widget.notebook.widget(3)
+		if isinstance(tab5_widget, Tab5Widget):
+			tab5_widget.filtered_data_changed.connect(self.set_filtered_data)
+			
+		tab6_widget = self.tab_widget.notebook.widget(5)
+		if isinstance(tab6_widget, Tab6Widget):
+			tab6_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Настройка главного окна
 		self.setFont(QFont("Arial", 12))
@@ -232,6 +250,11 @@ class Window(QMainWindow):
 		analysisMenuContract.addAction(self.prophet_arima_action)
 		analysisMenuContract.addAction(self.contracts_less_dates_action)
 		analysisMenuContract.addAction(self.herfind_hirshman_action)
+		
+		# Меню Анализ данных по Складам
+		analysisMenuWarehouses = menuBar.addMenu('Анализ данных по Складам')
+		analysisMenuWarehouses.addAction(self.warehouseStatistics)
+		
 	
 	def setActionTooltip(self, action, group, hint_key, x=0, y=0):
 		hint_text = self.menu_hints.get(group, {}).get(hint_key, "Нет инструкции для этого пункта")
@@ -299,6 +322,10 @@ class Window(QMainWindow):
 		                      y=20)
 		self.herfind_hirshman_action = QAction("Метод Херфиндаля-Хиршмана", self)
 		self.setActionTooltip(self.herfind_hirshman_action, "Анализ данных по Контрактам", "menu_item_5", x=450, y=20)
+		# ===================================================
+		
+		# Действия для меню Анализ данных по Складам
+		self.warehouseStatistics = QAction("Расчет остатков сум на складах по валютам", self)
 	
 	def _connectActions(self):
 		# Подключение сигналов к действиям
@@ -325,6 +352,9 @@ class Window(QMainWindow):
 		self.contracts_less_dates_action.triggered.connect(self.run_contracts_less_dates)
 		self.herfind_hirshman_action.triggered.connect(self.run_herfind_hirshman_analysis)
 	
+		# Подключение сигналов к методам Анализа данных по Складам
+		self.warehouseStatistics.triggered.connect(self.run_warehouseStatistics)
+		
 	def set_filtered_data(self, df):
 		"""Устанавливает отфильтрованный DataFrame для анализа."""
 		self.filtered_df = df
@@ -597,6 +627,14 @@ class Window(QMainWindow):
 		# Поиск альтернативных поставщиков
 		find_alternative_suppliers(all_major_suppliers, self.filtered_df)
 		self.analysis_thread.update_progress.emit(100)
+		
+		# Расчет сумм остатков по складам по валютам поставок
+	def run_warehouseStatistics(self):
+		print("Входим в метод Статистики по Складам")
+		from utils.analyzeWarehouseStatistics import calculate_statistics
+		calculate_statistics(self.filtered_df)
+		
+			
 
 
 if __name__ == "__main__":

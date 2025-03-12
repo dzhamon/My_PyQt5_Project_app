@@ -10,7 +10,7 @@ class Tab4Widget(QWidget):
 	
 	def __init__(self, params_for_tab4):
 		super().__init__()
-		params = params_for_tab4
+		self.params = params_for_tab4
 		# создаем основной макет
 		self.layout = QVBoxLayout(self)
 		# Словарь для хранения QListWidget и их значений
@@ -25,13 +25,11 @@ class Tab4Widget(QWidget):
 		# Создание кнопки для выполнения запроса
 		self.execute_button = QPushButton('Выполнить запрос')
 		self.execute_button.clicked.connect(self.show_filtered_data)
+		
 		# Добавление макета списков в основной макет
 		self.layout.addLayout(list_layout)
 		self.layout.addWidget(self.execute_button)
 		self.setLayout(self.layout)  # Устанавливаем основной макет
-	
-	# Подключаем сигнал от Tab3 к методу обновления данных
-	# self.filtered_contracts_changed.connect(self.on_filtered_contracts_received)
 	
 	def on_filtered_contracts_received(self, filtered_df):
 		""" Слот для обновления данных на основе сигнала от Tab3 """
@@ -45,40 +43,25 @@ class Tab4Widget(QWidget):
 	
 	def filter_listbox(self, text, list_widget):
 		"""
-		    Фильтрует элементы в списке с минимизацией обновлений.
-		    """
-		print(f"Фильрация списка {list_widget.objectName()} по текстуЖ '{text}'")
-		# Сохраняем текущую позицию прокрутки и выбранные элементы
-		scroll_position = list_widget.verticalScrollBar().value()
-		selected_items = [item.text() for item in list_widget.selectedItems()]
+				    Фильтрует элементы в списке на основе текста, сохраняя полный список.
+				"""
 		
-		# Собираем список видимых элементов
-		visible_items = []
-		for row in range(list_widget.count()):
-			item = list_widget.item(row)
-			if text.lower() in item.text().lower():
-				visible_items.append(item.text())
+		# Получаем полный список элементов
+		if not hasattr(list_widget, 'full_list'):
+			list_widget.full_list = [list_widget.item(row).text() for row in range(list_widget.count())]
 		
-		# Очищаем и наполняем виджет новыми элементами
+		# Фильтруем элементы
+		filtered_items = [item for item in list_widget.full_list if text.lower() in item.lower()]
+		
+		# Очищаем текущий виджет
 		list_widget.clear()
-		list_widget.addItems(visible_items)
-		
-		# Восстанавливаем выделение
-		for row in range(list_widget.count()):
-			item = list_widget.item(row)
-			if item.text() in selected_items:
-				item.setSelected(True)
-		
-		# Восстанавливаем прокрутку
-		list_widget.verticalScrollBar().setValue(scroll_position)
+		list_widget.addItems(filtered_items)
 
 
 	def update_data(self, filtered_df):
 		"""
 		Обновляет данные в QListWidget и включает их для выбора.
 		"""
-		print("update_data вызван")
-		print(f"Колонки DataFrame: {filtered_df.columns.tolist()}")
 		if filtered_df.empty:
 			print("Получен пустой DataFrame.")
 			self.clear_list_widgets()
@@ -87,16 +70,14 @@ class Tab4Widget(QWidget):
 		
 		# Заполняем QListWidget уникальными значениями из DataFrame
 		# filtered_df.loc[:,'executor_dak'] = filtered_df['executor_dak'].astype(str)
-		for col in self.list_widgets:
-			if col not in filtered_df.columns:
-				print(f"Столбец {col} отсутствует в DataFrame.")
-				continue
-			list_widget, _ = self.list_widgets[col]
-			unique_values = sorted(filtered_df[col].dropna().unique())
-			print(f"Для столбца {col} найдены значения: {unique_values[:10]} (первые 10)")
+		for col, (list_widget, search_entry) in self.list_widgets.items():
 			list_widget.clear()
+			unique_values = sorted(filtered_df[col].dropna().unique())
 			list_widget.addItems([str(value) for value in unique_values])
-	
+			search_entry.clear()
+			
+			# Сбрасываем full_list для обновленных данных
+			list_widget.full_list = [str(value) for value in unique_values]
 	
 	def send_data_to_analysis(self):
 		"""
@@ -106,7 +87,6 @@ class Tab4Widget(QWidget):
 			self.data_ready_for_analysis.emit(self.filtered_df_to_analyze)
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа")
-	
 	
 	def init_list_widgets(self, layout):
 		"""
@@ -119,14 +99,14 @@ class Tab4Widget(QWidget):
 			widget_layout = QVBoxLayout()  # Используем вертикальный макет для метки, списка и кнопки "Очистить"
 			label = QLabel(f"Выберите {name}:")
 			search_entry = QLineEdit(self)
-			search_entry.setPlaceholderText(f"Поиск по {name}...")
+			search_entry.setPlaceholderText("Начните вводить для поиска...")
 			search_entry.show()
 			
 			list_widget = QListWidget()
 			list_widget.setObjectName(name)
 			list_widget.setSelectionMode(QListWidget.MultiSelection)  # Поддержка множественного выбора
 			list_widget.show()
-			
+			self.list_widgets[name] = (list_widget, search_entry)
 			# Связь строки поиска с методом фильтрации
 			search_entry.textChanged.connect(lambda text, lw=list_widget: self.filter_listbox(text, lw))
 			
@@ -140,9 +120,6 @@ class Tab4Widget(QWidget):
 			widget_layout.addWidget(list_widget)
 			widget_layout.addWidget(clear_button)
 			layout.addLayout(widget_layout)
-			
-			# Сохранение виджетов в словаре
-			self.list_widgets[name] = list_widget, search_entry
 		
 		# Создаем таймер для отложенной фильтрации
 		self.filter_timer = QTimer(self)
@@ -153,7 +130,6 @@ class Tab4Widget(QWidget):
 		# Связываем ввод текста с запуском таймера
 		search_entry.textChanged.connect(lambda: self.filter_timer.start(300))
 	
-	
 	def clear_list_widgets(self):
 		"""
 		Очищает все QListWidget.
@@ -161,14 +137,17 @@ class Tab4Widget(QWidget):
 		for list_widget in self.list_widgets.values():
 			list_widget.clear()
 	
-	
 	def clear_selection(self, list_widget):
 		"""
 		Снимает выделение со всех элементов в указанном QListWidget.
 		"""
 		list_widget.clearSelection()
-	
-	
+		
+		# Восстанавливаем полный список элементов
+		if hasattr(list_widget, 'full_list'):
+			list_widget.clear()
+			list_widget.addItems(list_widget.full_list)
+			
 	def show_filtered_data(self):
 		"""
 		Отображает отфильтрованные данные во всплывающем окне.
@@ -217,7 +196,6 @@ class Tab4Widget(QWidget):
 		dialog.setLayout(layout)
 		dialog.resize(800, 600)
 		dialog.exec_()
-	
 	
 	def toggle_fullscreen(self, dialog, checked):
 		"""

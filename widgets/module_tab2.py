@@ -9,7 +9,7 @@ class Tab2Widget(QWidget):
 	
 	def __init__(self, params_for_tab2):
 		super().__init__()
-		params = params_for_tab2
+		self.params = params_for_tab2
 		
 		# Создание основного макета
 		self.layout = QVBoxLayout(self)

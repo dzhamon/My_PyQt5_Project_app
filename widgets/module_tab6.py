@@ -25,20 +25,22 @@ class Tab6Widget(QWidget):
 		# Создание кнопки для выполнения запроса
 		self.execute_button = QPushButton('Выполнить запрос')
 		self.execute_button.clicked.connect(self.show_filtered_data)
+		
 		# Добавление макета списков в основной макет
 		self.layout.addLayout(list_layout)
 		self.layout.addWidget(self.execute_button)
 		self.setLayout(self.layout)  # Устанавливаем основной макет
 	
 	def on_filtered_contracts_received(self, filtered_df):
-		""" Слот для обновления данных на основе сигнала от Tab5 """
-		
+		""" Слот для обновления данных на основе сигнала от Tab3 """
+		print("Получены фильтрованные данные из Tab5")
+		print("on_filtered_contracts_received вызван")
 		if not isinstance(filtered_df, pd.DataFrame):
 			print("Ошибка: Данные не являются DataFrame")
 			return
 		print(f"Получен DataFrame с {len(filtered_df)} строками и колонками: {filtered_df.columns.tolist()}")
 		self.update_data(filtered_df)
-	
+		
 	def filter_listbox(self, text, list_widget):
 		"""
 		    Фильтрует элементы в списке с минимизацией обновлений.
@@ -76,6 +78,7 @@ class Tab6Widget(QWidget):
 	
 	def send_data_to_analysis(self):
 		print('Мы в методе send_data_to_analysis??')
+		print(self.filtered_df_to_analyze)
 		"""
 			Передает отфильтрованные данные в модуль анализа
 			"""
@@ -89,7 +92,6 @@ class Tab6Widget(QWidget):
 		Инициализирует 7 QListWidget и кнопки "Очистить", добавляет их в горизонтальный макет.
 		"""
 		list_names = self.params  # ['warehouse', 'good_code', 'nomenclature', 'currency', 'stock_category', 'project_name', 'date_column']
-		
 		for name in list_names:
 			widget_layout = QVBoxLayout()  # Используем вертикальный макет для метки, списка и кнопки "Очистить"
 			label = QLabel(f"Выберите {name}:")
@@ -137,8 +139,8 @@ class Tab6Widget(QWidget):
 	
 	def show_filtered_data(self):
 		"""
-		Отображает отфильтрованные данные во всплывающем окне.
-		"""
+				Отображает отфильтрованные данные во всплывающем окне.
+				"""
 		if self.filtered_df.empty:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для отображения.")
 			return
@@ -148,11 +150,6 @@ class Tab6Widget(QWidget):
 		for col, (list_widget, _) in self.list_widgets.items():
 			selected_items = [item.text() for item in list_widget.selectedItems()]
 			if selected_items:
-				# преобразуем selected_items к типу данных столбца
-				if filtered_df[col].dtype == 'object':
-					selected_items = [str(item) for item in selected_items]
-				else:
-					selected_items = [float(item) if '.' in item else int(item) for item in selected_items]
 				filtered_df = filtered_df[filtered_df[col].isin(selected_items)]
 		
 		if filtered_df.empty:

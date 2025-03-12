@@ -17,7 +17,7 @@ class Tab5Widget(QWidget):
 	
 	def __init__(self):
 		super().__init__()
-		self.data_warehouse = None
+		self.data_warehouse = pd.DataFrame()
 		self.unit_ui() # инициализация пользовательского интерфейса
 
 	def unit_ui(self):
