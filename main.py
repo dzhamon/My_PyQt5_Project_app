@@ -13,11 +13,9 @@ from PyQt5.QtWidgets import QToolTip
 from PyQt5.QtGui import QFont, QCursor
 
 from widgets.module_tab1 import Tab1Widget
-from widgets.module_tab2 import Tab2Widget
 from widgets.module_tab3 import Tab3Widget
-from widgets.module_tab4 import Tab4Widget
 from widgets.module_tab5 import Tab5Widget
-from widgets.module_tab6 import Tab6Widget
+from widgets.universal_TabWidget import UniversalTabWidget
 import json
 import pandas as pd
 
@@ -93,19 +91,19 @@ class MyTabWidget(QWidget):
 		tab1 = Tab1Widget(self.data_df)
 		params_for_tab2 = ['lot_number', 'project_name', 'discipline', 'actor_name', 'winner_name', 'currency',
 		                   'good_name']
-		tab2 = Tab2Widget(params_for_tab2)
+		tab2 = UniversalTabWidget(params_for_tab2)
 		tab3 = Tab3Widget(self.contract_df, contracts_count, future_dates_count, invalid_year_count,
 		                  missing_unit_price_count, negative_price_count, invalid_signing_date_count,
 		                  missing_executor_dak_count)
 		params_for_tab4 = ['lot_number', 'discipline', 'contract_name', 'executor_dak', 'counterparty_name',
 		                   'product_name',
 		                   'contract_currency']
-		tab4 = Tab4Widget(params_for_tab4)
+		tab4 = UniversalTabWidget(params_for_tab4)
 		tab5 = Tab5Widget()
 		
 		params_for_tab6 = ['warehouse', 'nomenclature', 'currency', 'stock_category',
 		                   'department', 'project_name', 'date_column']
-		tab6 =Tab6Widget(params_for_tab6)
+		tab6 = UniversalTabWidget(params_for_tab6)
 		
 		self.notebook.addTab(tab1, 'Данные по Лотам')
 		self.notebook.addTab(tab2, 'Параметры загруженных Лотов')
@@ -171,7 +169,7 @@ class Window(QMainWindow):
 		
 		# Подключение сигнала для получения отфильтрованных данных
 		tab2_widget = self.tab_widget.notebook.widget(1)  # Получаем второй виджет вкладки (Tab2)
-		if isinstance(tab2_widget, Tab2Widget):
+		if isinstance(tab2_widget, UniversalTabWidget):
 			tab2_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Подключение сигнала для обновления данных между вкладками
@@ -180,7 +178,7 @@ class Window(QMainWindow):
 			tab3_widget.filtered_contracts_changed.connect(self.update_tab3_data)
 		
 		tab4_widget = self.tab_widget.notebook.widget(3)
-		if isinstance(tab4_widget, Tab4Widget):
+		if isinstance(tab4_widget, UniversalTabWidget):
 			tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 			
 		tab5_widget = self.tab_widget.notebook.widget(3)
@@ -188,7 +186,7 @@ class Window(QMainWindow):
 			tab5_widget.filtered_data_changed.connect(self.set_filtered_data)
 			
 		tab6_widget = self.tab_widget.notebook.widget(5)
-		if isinstance(tab6_widget, Tab6Widget):
+		if isinstance(tab6_widget, UniversalTabWidget):
 			tab6_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Настройка главного окна
