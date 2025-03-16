@@ -8,10 +8,19 @@ import pandas as pd
 class UniversalTabWidget(QWidget):
 	data_ready_for_analysis = pyqtSignal(pd.DataFrame)
 	
+	def on_filtered_contracts_received(self, filtered_df):
+		""" Слот для обновления данных на основе сигнала от Tab3 """
+		print("Получены фильтрованные данные из Tab3")
+		print("on_filtered_contracts_received вызван")
+		if not isinstance(filtered_df, pd.DataFrame):
+			print("Ошибка: Данные не являются DataFrame")
+			return
+		print(f"Получен DataFrame с {len(filtered_df)} строками и колонками: {filtered_df.columns.tolist()}")
+		self.update_data(filtered_df)
+		
 	def __init__(self, params_for_tab, use_timer=False, receive_data_slot=None):
 		super().__init__()
 		self.params = params_for_tab
-		# self.list_names = list_names  # Параметр для настройки списков
 		self.use_timer = use_timer  # Параметр для включения таймера
 		self.receive_data_slot = receive_data_slot  # Параметр для слота получения данных
 		
@@ -35,15 +44,7 @@ class UniversalTabWidget(QWidget):
 		self.layout.addWidget(self.execute_button)
 		self.setLayout(self.layout)  # Устанавливаем основной макет
 	
-	def on_filtered_contracts_received(self, filtered_df):
-		"""
-		Слот для обновления данных на основе сигнала от другой вкладки.
-		"""
-		if self.receive_data_slot:
-			self.receive_data_slot(filtered_df)
-		else:
-			print("Получены фильтрованные данные из другой вкладки")
-			self.update_data(filtered_df)
+	
 	
 	def filter_listbox(self, text, list_widget):
 		"""

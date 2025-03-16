@@ -2,7 +2,6 @@ from styles import set_light_theme, set_fonts, load_stylesheet
 
 from utils.data_model import DataModel
 from utils.clean_datas import clean_database
-from utils.functions import load_data_from_sql, cleanDataDF, load_data_contract_from_sql
 from utils.visualizer import KPIVisualizer
 import sys
 import os
@@ -50,16 +49,12 @@ class AnalysisThread(QThread):
 
 
 class MyTabWidget(QWidget):
-	def __init__(self, data_df, contract_df, contracts_count, future_dates_count, invalid_year_count,
-	             missing_unit_price_count,
-	             negative_price_count, invalid_signing_date_count, missing_executor_dak_count):
+	def __init__(self, data_df, contract_df):
 		super().__init__()
 		self.df_kpi_normalized = None
 		self.data_df = data_df
 		self.contract_df = contract_df
 		self.notebook = QTabWidget()
-		self.setup_tabs(contracts_count, future_dates_count, invalid_year_count, missing_unit_price_count,
-		                negative_price_count, invalid_signing_date_count, missing_executor_dak_count)
 		layout = QVBoxLayout(self)
 		layout.addWidget(self.notebook)
 		self.setLayout(layout)
@@ -69,6 +64,9 @@ class MyTabWidget(QWidget):
 		self.tooltip_label.setStyleSheet(
 			"background-color: yellow; color: black; font-size: 12px; padding: 5px; border: 1px solid black;")
 		self.tooltip_label.hide()  # Скрываем по умолчанию
+		
+		# Вызов метода setup_tabs с параметрами
+		self.setup_tabs()
 	
 	def showTooltip(self, text, x=20, y=20):
 		try:
@@ -85,16 +83,14 @@ class MyTabWidget(QWidget):
 		# Скрываем виджет подсказки
 		self.tooltip_label.hide()
 	
-	def setup_tabs(self, contracts_count, future_dates_count, invalid_year_count, missing_unit_price_count,
-	               negative_price_count, invalid_signing_date_count, missing_executor_dak_count):
+	def setup_tabs(self):
 		# создание отдельных вкладок
-		tab1 = Tab1Widget(self.data_df)
+		# tab1 = Tab1Widget(self.data_df)
+		tab1 = Tab1Widget()
 		params_for_tab2 = ['lot_number', 'project_name', 'discipline', 'actor_name', 'winner_name', 'currency',
 		                   'good_name']
 		tab2 = UniversalTabWidget(params_for_tab2)
-		tab3 = Tab3Widget(self.contract_df, contracts_count, future_dates_count, invalid_year_count,
-		                  missing_unit_price_count, negative_price_count, invalid_signing_date_count,
-		                  missing_executor_dak_count)
+		tab3 = Tab3Widget()
 		params_for_tab4 = ['lot_number', 'discipline', 'contract_name', 'executor_dak', 'counterparty_name',
 		                   'product_name',
 		                   'contract_currency']
@@ -116,8 +112,8 @@ class MyTabWidget(QWidget):
 		tab1.filtered_data_changed.connect(tab2.update_data)
 		tab3.filtered_contracts_changed.connect(tab4.update_data)
 		# Подключение сигнала от Tab3 к Tab4 для передачи отфильтрованных контрактов
-		tab3.filtered_contracts_changed.connect(tab4.on_filtered_contracts_received)
-		tab5.filtered_data_changed.connect(tab6.on_filtered_contracts_received)
+		tab3.filtered_contracts_changed.connect(tab4.update_data)
+		tab5.filtered_data_changed.connect(tab6.update_data)
 		print("MyTabWidget: Вкладки успешно созданы")  # Отладочный принт
 
 
@@ -131,35 +127,8 @@ class Window(QMainWindow):
 		# Загрузка подсказок
 		self.menu_hints = load_menu_hints()
 		
-		# Загрузка всех данных из таблицы data_kp базы данных
-		self.data_df = load_data_from_sql()  # Загружаем весь DataFrame при старте
-		self.data_df = cleanDataDF(self.data_df)  # очистка данных полученного df
-		
-		# Загрузка всех данных из таблицы data_contract базы данных и получение статистики
-		(self.contract_df,
-		 self.contracts_count,
-		 self.future_dates_count,
-		 self.invalid_year_count,
-		 self.missing_unit_price_count,
-		 self.negative_price_count,
-		 self.invalid_signing_date_count,
-		 self.missing_executor_dak_count) = load_data_contract_from_sql()
-		
-		# Используем QTimer.singleShot, чтобы показать сообщения после загрузки GUI
-		QTimer.singleShot(0, lambda: QMessageBox.information(self, "Инфо", "Загружены все Лоты и все Контракты"))
-		
 		# Создание и установка вкладок
-		self.tab_widget = MyTabWidget(
-			self.data_df,
-			self.contract_df,
-			self.contracts_count,
-			self.future_dates_count,
-			self.invalid_year_count,
-			self.missing_unit_price_count,
-			self.negative_price_count,
-			self.invalid_signing_date_count,
-			self.missing_executor_dak_count
-		)
+		self.tab_widget = MyTabWidget(self.data_df, self.contract_df)
 		self.setCentralWidget(self.tab_widget)
 		
 		# Подключение сигнала для обновления данных между вкладками
@@ -173,15 +142,16 @@ class Window(QMainWindow):
 			tab2_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Подключение сигнала для обновления данных между вкладками
-		tab3_widget = self.tab_widget.notebook.widget(2)
-		if isinstance(tab3_widget, Tab3Widget):
-			tab3_widget.filtered_contracts_changed.connect(self.update_tab3_data)
+		tab3_widget = self.tab_widget.notebook.widget(2) # получаем Tab3Widget
+		tab4_widget = self.tab_widget.notebook.widget(3)
+		if isinstance(tab3_widget, Tab3Widget) and isinstance(tab4_widget, UniversalTabWidget):
+			tab3_widget.filtered_contracts_changed.connect(tab4_widget.on_filtered_contracts_received)
 		
 		tab4_widget = self.tab_widget.notebook.widget(3)
 		if isinstance(tab4_widget, UniversalTabWidget):
 			tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 			
-		tab5_widget = self.tab_widget.notebook.widget(3)
+		tab5_widget = self.tab_widget.notebook.widget(4)
 		if isinstance(tab5_widget, Tab5Widget):
 			tab5_widget.filtered_data_changed.connect(self.set_filtered_data)
 			
@@ -212,9 +182,9 @@ class Window(QMainWindow):
 	def update_tab2_data(self, filtered_df):
 		self.tab_widget.notebook.widget(1).update_data(filtered_df)
 	
-	def update_tab3_data(self, updated_contract_df):
+	def update_tab3_data(self, filtered_df):
 		# Логика обновления данных на вкладке 3
-		self.tab_widget.notebook.widget(2).update_contract_data(updated_contract_df)
+		self.tab_widget.notebook.widget(2).update_data(filtered_df)
 		print("Данные для вкладки 3 обновлены")
 	
 	def _createMenuBar(self):

@@ -76,14 +76,8 @@ def load_data_from_sql():
 	return df
 
 
-def load_data_contract_from_sql():
-	
-	print('Загружаются все Контракты из базы данных')
-	conn = sqlite3.connect(SQL_PATH)
-	
-	# Загрузка данных из базы
-	df_c = pd.read_sql_query("SELECT * FROM data_contract ORDER BY contract_signing_date", conn)
-	conn.close()
+def clean_contract_data(df_c):
+	# метод очистки данных по контрактам
 	
 	# Удаляем пробелы (разделители тысяч) и заменяем запятую на точку (десятичный разделитель)
 	df_c['total_contract_amount'] = pd.to_numeric(
@@ -173,9 +167,7 @@ def load_data_contract_from_sql():
 		"contract_df": df_c
 	}
 
-	
-	return (df_c, contracts_count, future_dates_count, invalid_year_count, missing_unit_price_count,
-	        negative_price_count, invalid_signing_date_count, missing_executor_dak_count)
+	return df_c
 
 def get_cached_data():
     global _cached_data
