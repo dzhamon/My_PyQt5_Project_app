@@ -15,6 +15,7 @@ class Tab5Widget(QWidget):
 	# Определяем сигнал, который будет испускаться при изменении фильтрованных данных
 	filtered_data_changed = pyqtSignal(pd.DataFrame)
 	
+	
 	def __init__(self):
 		super().__init__()
 		self.data_warehouse = pd.DataFrame()

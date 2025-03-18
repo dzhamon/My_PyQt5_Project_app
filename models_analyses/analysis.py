@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import datetime
 import os
 import gc
 import networkx as nx
@@ -6,6 +7,7 @@ import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QMetaObject, Qt
 from utils.vizualization_tools import save_top_suppliers_bar_chart
+from utils.config import BASE_DIR
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
@@ -28,10 +30,19 @@ def group_by_currency(df):
 	return grouped
 
 
-def analyze_monthly_expenses(df, start_date, end_date):
+def analyze_monthly_cost(parent_widget, df, start_date, end_date):
+	"""
+	Для полноценного анализа месяных затрат на закупку материалов
+	необходимы данные по планируемому бюджету закупок на этот проект.
+	Причем, необходимо иметь данные бюджета по различным категориям материалов.
+	:param df:
+	:param start_date:
+	:param end_date:
+	:return:
+	"""
 	# Создаем папку для результатов, если её еще нет
-	output_dir = "D:/Analysis-Results"
-	os.makedirs(output_dir, exist_ok=True)
+	OUT_DIR = os.path.join(BASE_DIR, "monthly_cost")
+	os.makedirs(OUT_DIR, exist_ok=True)
 	
 	# Конвертация дат
 	df['close_date'] = pd.to_datetime(df['close_date'], errors='coerce')
@@ -63,7 +74,7 @@ def analyze_monthly_expenses(df, start_date, end_date):
 	grouped = filtered_df.groupby(['year_month', 'currency'])['total_price'].sum().unstack()
 	
 	# Проверка на наличие данных для каждой валюты
-	missing_currencies = set(df['currency'].unique()) - set(grouped.columns)
+	missing_currencies = set(df['currency'].unique()) - set(filtered_df['currency'].unique())
 	if missing_currencies:
 		print(f"Отсутствуют данные для валют: {missing_currencies}")
 	
@@ -88,22 +99,36 @@ def analyze_monthly_expenses(df, start_date, end_date):
 				plt.text(x.ordinal, y, f'{y:.0f}%', ha='center', va='bottom')
 	
 	# Сохранение графика в файл с идентификатором фильтра
-	filename = f"monthly_expenses_{filter_description}_normalized.png"
-	filepath = os.path.join(output_dir, filename)
+	filename = f"monthly_cost_{filter_description}_norm.png"
+	filepath = os.path.join(OUT_DIR, filename)
 	plt.savefig(filepath, bbox_inches='tight')
 	plt.show()
 	
-	print(f"Нормализованный объединенный график успешно сохранен как '{filepath}'.")
+	QMessageBox.information(parent_widget, "Результат",
+	                        f"Анализ месячных затрат завершен. Графики сохранены в папке "
+	                        f"{OUT_DIR} ")
 
 
-def analyze_top_suppliers(parent_widget, df, start_date, end_date):
+def analyze_top_suppliers(parent_widget, df, start_date, end_date, project_name):
+	"""
+	   Анализирует топ-10 поставщиков и сохраняет результаты в папку, названную по имени проекта.
+
+	   :param parent_widget: Родительский виджет для отображения сообщений.
+	   :param df: DataFrame с данными.
+	   :param start_date: Начальная дата периода анализа.
+	   :param end_date: Конечная дата периода анализа.
+	   :param project_name: Наименование проекта.
+	   """
 	# Создаем папку для результатов, если её еще нет
-	output_dir = "D:/Analysis-Results/Top_10"
-	os.makedirs(output_dir, exist_ok=True)
+	OUT_DIR  = os.path.join(BASE_DIR, "top_10_suppls", project_name)
+	os.makedirs(OUT_DIR, exist_ok=True)
+	
 	# Группируем данные по валютам
 	grouped_by_currency = group_by_currency(df)
 	
 	# Вычисляем количество лет и месяцев между датами
+	start_date = datetime.strptime(start_date, "%Y-%m-%d")
+	end_date = datetime.strptime(end_date, "%Y-%m-%d")
 	delta = end_date - start_date
 	num_years = delta.days // 365
 	num_months = (delta.days % 365) // 30
@@ -118,35 +143,78 @@ def analyze_top_suppliers(parent_widget, df, start_date, end_date):
 		interval_text += f'{num_months} месяца' if num_months == 1 else f'{num_months} месяцев'
 	
 	# Проходим по каждой группе валют
-	for currency, group in grouped_by_currency:
-		# Вывод информации о текущей группе
-		print(f"Валюта: {currency}, количество записей: {len(group)}")
+	# и создаем excel-файл с помощью ExcelWriter
+	file_exls_name = f"top_10_report_{project_name}.xlsx"
+	file_exls_path = os.path.join(OUT_DIR, file_exls_name)
+	with pd.ExcelWriter(file_exls_path, engine='xlsxwriter') as writer:
+		for currency, group in grouped_by_currency:
+			# Вывод информации о текущей группе
+			print(f"Валюта: {currency}, количество записей: {len(group)}")
+			
+			# Проверка наличия данных
+			if group.empty:
+				print(f"Нет данных для валюты {currency}, пропускаем...")
+				continue
+			
+			# Группировка по поставщикам и подсчет затрат
+			top_suppliers = group.groupby('winner_name')['total_price'].sum().nlargest(10)
+			
+			# Проверка наличия данных после группировки
+			if top_suppliers.empty:
+				print(f"Нет данных для построения графика по валюте {currency}.")
+				continue
+			# Преобразуем Series в DataFrame для записи в Excel
+			top_suppliers_df = top_suppliers.reset_index()
+			top_suppliers_df.columns = ['Supplier', 'Total Costs']
+			
+			# Записываем данные в Excel на отдельный лист
+			sheet_name = f"Top Suppliers ({currency})"
+			top_suppliers_df.to_excel(writer, sheet_name=sheet_name, index=False)
+			
+			# Добавляем форматирование
+			workbook = writer.book
+			worksheet = writer.sheets[sheet_name]
+			
+			# Форматируем заголовки
+			header_format = workbook.add_format({
+				'bold': True,
+				'text_wrap': True,
+				'valign': 'top',
+				'fg_color': '#4F81BD',
+				'font_color': '#FFFFFF',
+				'border': 1
+			})
+			
+			# Форматируем ячейки с данными
+			data_format = workbook.add_format({
+				'num_format': '#,##0',
+				'border': 1
+			})
+			
+			# Применяем форматирование к заголовкам
+			for col_num, value in enumerate(top_suppliers_df.columns.values):
+				worksheet.write(0, col_num, value, header_format)
+			
+			# Применяем форматирование к данным
+			for row_num, data in enumerate(top_suppliers_df.values, start=1):
+				for col_num, value in enumerate(data):
+					if col_num == 1:  # Форматируем столбец с суммами
+						worksheet.write(row_num, col_num, value, data_format)
+					else:
+						worksheet.write(row_num, col_num, value)
+			
+			# Автонастройка ширины столбцов
+			worksheet.set_column('A:B', 20)
+			
+			# вызываем функцию визуализации
+			save_top_suppliers_bar_chart(top_suppliers, currency, interval_text, OUT_DIR)
 		
-		# Проверка наличия данных
-		if group.empty:
-			print(f"Нет данных для валюты {currency}, пропускаем...")
-			continue
-		
-		# Группировка по поставщикам и подсчет затрат
-		top_suppliers = group.groupby('winner_name')['total_price'].sum().nlargest(10)
-		
-		print(f"Топ-10 поставщиков для валюты {currency}:")
-		print(top_suppliers)  # Проверочный вывод
-		
-		# Проверка наличия данных после группировки
-		if top_suppliers.empty:
-			print(f"Нет данных для построения графика по валюте {currency}.")
-			continue
-		
-		# вызываем функцию визуализации
-		save_top_suppliers_bar_chart(top_suppliers, currency, interval_text, output_dir)
-	
 	QMessageBox.information(parent_widget, "Результат",
-	                        f"Анализ Топ-10 поставщиков завершен. Графики сохранены в папке "
-	                        f"{output_dir} ")
+	                        f"Анализ Топ-10 поставщиков завершен. Графики и файл {file_exls_name}"
+                            f"сохранены в папке: {OUT_DIR}")
 
 
-""" -------------------------------------------------------------- """
+# -----------------------------------------------------
 
 """ Анализ Частота появления Поставщика"""
 

@@ -49,30 +49,42 @@ def plot_bar_chart(x, y, title, x_label, y_label, output_file):
     plt.savefig(output_file)
     plt.close()
     
+def preprocess_supplier_names(supplier_names):
+    # Удаляем лидирующие пробелы
+    supplier_names = supplier_names.str.strip()
+    # Удаляем приставку "не использовать дубль"
+    supplier_names = supplier_names.str.replace(r'^Не использовать дубль\s*', '', regex=True)
+    # Ограничиваем длину до 15 символов
+    supplier_names = supplier_names.str[:15]
+    
+    return supplier_names
+
 def save_top_suppliers_bar_chart(top_suppliers, currency, interval_text, output_dir):
     """
     Создание и сохранение графиков топ-10 поставщиков
     """
-    # Create a figure for the chart
+    top_suppliers.index = preprocess_supplier_names(top_suppliers.index)
+    
+    # Создаем фигуру для графика
     fig, ax = plt.subplots(figsize=(12, 8))
     top_suppliers.plot(kind='bar', color='skyblue', ax=ax)
     
     # Обновляем метки оси X
     ax.set_xticks(range(len(top_suppliers)))
-    ax.set_xticklabels(top_suppliers.index, rotation=45)
+    ax.set_xticklabels(top_suppliers.index, rotation=30)
 
     # Add title and labels
     ax.set_title(f'Top-10 Suppliers by Total Costs for {interval_text} (Currency: {currency})')
     ax.set_xlabel('Supplier')
     ax.set_ylabel(f'Total Costs ({currency})')
 
-    # Add value labels on the bars
+    # добавляем значения на столбцы
     for i, v in enumerate(top_suppliers):
         ax.text(i, v + 0.07 * v, f'{v:,.0f}', ha='center', va='bottom')
 
     ax.grid(axis='y')
 
-    # Save the chart to the specified directory
+    # сохраняем графики в указанную директорию
     file_path = os.path.join(output_dir, f'top_suppliers_{currency}.png')
     plt.savefig(file_path)
     plt.close()

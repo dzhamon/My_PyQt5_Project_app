@@ -146,10 +146,6 @@ class Window(QMainWindow):
 		tab4_widget = self.tab_widget.notebook.widget(3)
 		if isinstance(tab3_widget, Tab3Widget) and isinstance(tab4_widget, UniversalTabWidget):
 			tab3_widget.filtered_contracts_changed.connect(tab4_widget.on_filtered_contracts_received)
-		
-		tab4_widget = self.tab_widget.notebook.widget(3)
-		if isinstance(tab4_widget, UniversalTabWidget):
-			tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 			
 		tab5_widget = self.tab_widget.notebook.widget(4)
 		if isinstance(tab5_widget, Tab5Widget):
@@ -302,7 +298,7 @@ class Window(QMainWindow):
 		self.ExitAction.triggered.connect(self.close)
 		
 		# Подключение сигналов к методам Анализа данных по Лотам
-		self.analyzeMonthlyExpensesAction.triggered.connect(self.run_analyze_monthly_expenses)
+		self.analyzeMonthlyExpensesAction.triggered.connect(self.run_analyze_monthly_cost)
 		self.analyzeTopSuppliersAction.triggered.connect(self.run_analyze_top_suppliers)
 		self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
 		self.suppliersfriquencyAction.triggered.connect(self.run_analyze_supplier_friquency)
@@ -398,18 +394,15 @@ class Window(QMainWindow):
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных KPI для визуализации.")
 	
-	def run_analyze_monthly_expenses(self):
+	def run_analyze_monthly_cost(self):
 		# метод для анализа месячных затрат
 		if self.filtered_df is not None:
 			print("Данные для анализа (месячные затраты):")
-			print(self.filtered_df.head())  # Вывод первых строк для проверки
-			print(self.filtered_df['project_name'])
 			# Используем минимальную и максимальную даты из отфильтрованных данных
 			start_date = self.filtered_df['close_date'].min()
 			end_date = self.filtered_df['close_date'].max()
-			from models_analyses.analysis import analyze_monthly_expenses
-			analyze_monthly_expenses(self.filtered_df, start_date, end_date)
-		# Ваша логика для анализа данных
+			from models_analyses.analysis import analyze_monthly_cost
+			analyze_monthly_cost(self, self.filtered_df, start_date, end_date)
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 	
@@ -419,9 +412,16 @@ class Window(QMainWindow):
 			"""Используем минимальную и максимальную даты из отфильтрованных данных"""
 			start_date = self.filtered_df['close_date'].min()
 			end_date = self.filtered_df['close_date'].max()
+			uniq_project_name = self.filtered_df['project_name'].unique()
+			# Проверяем, что уникальное значение только одно
+			if len(uniq_project_name) == 1:
+				project_name = uniq_project_name.item()  # Извлекаем значение из массива как строку
+			else:
+				raise ValueError(f"Ожидалось одно уникальное значение project_name, но найдено: {uniq_project_name}")
+			
 			from models_analyses.analysis import analyze_top_suppliers
-			analyze_top_suppliers(self, self.filtered_df, start_date, end_date)
-		# Логика для анализа данных
+			# здесь логика для анализа данных
+			analyze_top_suppliers(self, self.filtered_df, start_date, end_date, project_name)
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 	
@@ -455,6 +455,8 @@ class Window(QMainWindow):
 				logging.info(f'Кластерный анализ завершен. Результаты сохранены в {output_dir}')
 			else:
 				logging.error('Кластерный анализ завершился ошибкой.')
+		else:
+			print("Нет данных для анализа")
 	
 	def run_analyze_supplier_friquency(self):
 		# Метод для анализа частоты выбора поставщиков
