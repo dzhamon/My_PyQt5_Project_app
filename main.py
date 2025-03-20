@@ -300,7 +300,7 @@ class Window(QMainWindow):
 		# Подключение сигналов к методам Анализа данных по Лотам
 		self.analyzeMonthlyExpensesAction.triggered.connect(self.run_analyze_monthly_cost)
 		self.analyzeTopSuppliersAction.triggered.connect(self.run_analyze_top_suppliers)
-		self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
+		self.analyzeClasterAction.triggered.connect(self.run_clasteranalyze)
 		self.suppliersfriquencyAction.triggered.connect(self.run_analyze_supplier_friquency)
 		self.networkanalyseAction.triggered.connect(self.run_network_analysis)
 		self.analyzeKPIAction.triggered.connect(self.run_kpi_analysis)
@@ -424,6 +424,17 @@ class Window(QMainWindow):
 			analyze_top_suppliers(self, self.filtered_df, start_date, end_date, project_name)
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
+			
+	def run_clasteranalyze(self):
+		# Метод классификации исполнителей и поставщиков
+		if self.filtered_df is not None:
+			# здесь логика подготовки данных и непосредственно анализа
+			from models_analyses.data_clastering_analyze import unique_discip_actor_lots, analyze_suppliers
+			lots_per_actor = unique_discip_actor_lots(self.filtered_df)
+			supplier_stats = analyze_suppliers(lots_per_actor)
+		else:
+			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
+
 	
 	def run_ClusterAnalyze(self):
 		# Метод для классификации исполнителей с обучением методом SeedKMeans
