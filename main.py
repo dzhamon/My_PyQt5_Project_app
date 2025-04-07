@@ -10,6 +10,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QAction, QInputDialog, Q
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QPoint, QMetaObject
 from PyQt5.QtWidgets import QToolTip
 from PyQt5.QtGui import QFont, QCursor
+from core.signals import PlotEmitter
+from utils.vizualization_tools import create_plot_graf
 
 from widgets.module_tab1 import Tab1Widget
 from widgets.module_tab3 import Tab3Widget
@@ -32,7 +34,6 @@ def clicked_connect(self):
 
 class AnalysisThread(QThread):
 	update_progress = pyqtSignal(int)  # сигнал для обновления прогресса
-	create_plot = pyqtSignal(str, pd.DataFrame)
 	
 	def __init__(self, analysis_method, create_plot=False, *args, **kwargs):
 		super().__init__()
@@ -431,7 +432,7 @@ class Window(QMainWindow):
 			# здесь логика подготовки данных и непосредственно анализа
 			from models_analyses.data_clastering_analyze import unique_discip_actor_lots, analyze_suppliers
 			lots_per_actor = unique_discip_actor_lots(self.filtered_df)
-			supplier_stats = analyze_suppliers(lots_per_actor)
+			supplier_stats = analyze_suppliers(self,lots_per_actor)
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 
@@ -530,7 +531,18 @@ class Window(QMainWindow):
 			analysis_task=self._analyze_by_unit_price_task,
 			on_finished_callback=self.on_analysis_finished
 		)
-	
+	def handle_plot(self, title, figure):
+		"""Слот для отображения графика в главном потоке"""
+		from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+		canvas = FigureCanvasQTAgg(figure)
+		self.setCentralWidget(canvas)
+		self.show()
+		
+	# def start_analysis(self):
+	# 	# Передаём эмиттер в функцию визуализации
+	# 	# data = load_data()  # Ваша загрузка данных
+	# 	create_plot_graf(data, emitter=self.plot_emitter)
+	#
 	def _analyze_by_unit_price_task(self, update_progress, create_plot):
 		from models_analyses.efficiency_analyses import analyze_suppliers_by_unit_price
 		update_progress.emit(10)

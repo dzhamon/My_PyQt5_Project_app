@@ -17,7 +17,7 @@ class UniversalTabWidget(QWidget):
 			return
 		print(f"Получен DataFrame с {len(filtered_df)} строками и колонками: {filtered_df.columns.tolist()}")
 		self.update_data(filtered_df)
-		
+	
 	def __init__(self, params_for_tab, use_timer=False, receive_data_slot=None):
 		super().__init__()
 		self.params = params_for_tab
@@ -43,8 +43,6 @@ class UniversalTabWidget(QWidget):
 		self.layout.addLayout(list_layout)
 		self.layout.addWidget(self.execute_button)
 		self.setLayout(self.layout)  # Устанавливаем основной макет
-	
-	
 	
 	def filter_listbox(self, text, list_widget):
 		"""

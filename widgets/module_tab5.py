@@ -40,7 +40,7 @@ class Tab5Widget(QWidget):
 		self.layout.addWidget(self.end_date_edit, 1, 1)
 		
 		# Кнопка применения диапазона дат
-		self.apply_button = QPushButton("Применить диапазон дат")
+		self.apply_button = QPushButton("Загрузить Остатки из выбранного диапазона дат")
 		self.apply_button.clicked.connect(self.apply_date_filter)
 		self.layout.addWidget(self.apply_button, 2, 0, 1, 2)
 		
@@ -58,9 +58,9 @@ class Tab5Widget(QWidget):
 		start_date = self.start_date_edit.date().toPyDate()
 		end_date = self.end_date_edit.date().toPyDate()
 		
-		# Преобразуем даты в datetime64[ns]
-		start_date = pd.to_datetime(start_date)
-		end_date = pd.to_datetime(end_date)
+		# # Преобразуем даты в datetime64[ns]
+		# start_date = pd.to_datetime(start_date)
+		# end_date = pd.to_datetime(end_date)
 		
 		# Проверяем корректность диапазона дат
 		if start_date > end_date:
@@ -71,12 +71,32 @@ class Tab5Widget(QWidget):
 		# Загружаем данные из warehouses_remnants по выбранным датам
 		db_path = SQL_PATH
 		conn = sqlite3.connect(db_path)
+		cursor = conn.cursor()
+		
+		# Проверяем, есть ли в таблице warehouses_remnants данные с такими датами
+		cursor.execute("""
+		SELECT COUNT(*) FROM warehouses_remnants
+					WHERE DATE(date_column) BETWEEN DATE(?) AND DATE(?)
+					""", (start_date, end_date))
+		count = cursor.fetchone()[0]
+		
+		if count == 0:
+			QMessageBox.warning(self, "Ошибка",
+			                    "В выбранном диапазоне нет данных. Измените даты.")
+			conn.close()
+			# Сброс дат на значения по умолчанию
+			self.start_date_edit.setDate(QDate.currentDate().addMonths(-1))
+			self.end_date_edit.setDate(QDate.currentDate())
+			return
+		
+		# Усли данные есть - загружаем их
 		query = f"""
 		SELECT * FROM warehouses_remnants
-		WHERE DATE(date_column) BETWEEN DATE('{start_date}') AND DATE('{end_date}');
+		WHERE DATE(date_column) BETWEEN DATE(?) AND DATE(?);
 			"""
 		# Загрузка данных в датафрейм
-		self.data_warehouse = pd.read_sql_query(query, conn)
+		self.data_warehouse = pd.read_sql_query(query, conn,
+		                                        params=(start_date, end_date))
 		# закрыть соединение с базой данных
 		conn.close()
 		

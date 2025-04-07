@@ -332,96 +332,201 @@ def display_dataframe_to_user(name, dataframe):
 	# Показываем окно
 	dialog.exec_()
 
+import os
+from datetime import datetime
+from PyQt5.QtWidgets import QMessageBox
 
 def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, create_plot):
-	print("Загружен метод analyze_suppliers_by_unit_price")
+	import re
+	"""Анализ поставщиков по средней цене за единицу товара с расширенной статистикой.
+
+	Args:
+		parent_widget: Родительский виджет для QMessageBox.
+		mydata_df (pd.DataFrame): DataFrame с данными о закупках.
+		update_progress (signal): Сигнал для обновления прогресс-бара.
+		create_plot (function): Функция для построения графиков.
 	"""
-	  Анализ поставщиков по средней цене за единицу товаров.
-	  :param mydata_df: DataFrame с товарами для анализа
-	  :param data_df: Полный DataFrame для фильтрации лотов
-	"""
-	output_folder = 'D:\Analysis-Results\suppliers_by_unit_price'
+	print("Запуск analyze_suppliers_by_unit_price")
+	update_progress.emit(0)
 	
-	# Создаём папку, если она не существует
-	if not os.path.exists(output_folder):
-		os.makedirs(output_folder)
+	# --- 1. Настройка пути и папки для результатов ---
+	output_folder = 'D:/Analysis-Results/suppliers_by_unit_price'
+	os.makedirs(output_folder, exist_ok=True)
+	update_progress.emit(10)
 	
-	# Приведение валют к единой валюте EUR
-	columns_info = [('unit_price', 'currency', 'unit_price_eur')]
-	converter = CurrencyConverter()
-	mydata_df = converter.convert_multiple_columns(mydata_df, columns_info)
+	# --- 2. Конвертация валют ---
+	if 'unit_price' in mydata_df.columns and 'currency' in mydata_df.columns:
+		columns_info = [('unit_price', 'currency', 'unit_price_eur')]
+		converter = CurrencyConverter()
+		mydata_df = converter.convert_multiple_columns(mydata_df, columns_info)
 	update_progress.emit(20)
 	
-	
-	# Удаляем лишние пробелы и приводим к нижнему регистру
+	# --- 3. Нормализация данных c наименованиями товаров ---
 	mydata_df['good_name'] = mydata_df['good_name'].str.strip().str.lower()
 	
-	# Частота появления товаров
-	goods_frequency = mydata_df['good_name'].value_counts()
-	repeated_goods = goods_frequency[goods_frequency > 1]
+	# --- 4. Фильтрация товаров с разными поставщиками ---
+	goods_stats = mydata_df.groupby('good_name').agg(
+		suppliers_count=('winner_name', 'nunique'),
+		lots_count=('lot_number', 'nunique')
+	).reset_index()
+	
+	# Берём найденные товары
+	filtered_goods = goods_stats['good_name']
+	# Добавим метку "единичный поставщик" в основной датафрейм
+	mydata_df['is_single'] = mydata_df.groupby(['good_name', 'winner_name'])['lot_number'].transform('nunique') >= 1
+	
+	if filtered_goods.empty:
+		QMessageBox.information(parent_widget, "Результат", "Нет товаров с несколькими поставщиками.")
+		return None
 	update_progress.emit(30)
 	
-	if repeated_goods.empty:
-		QMessageBox.information(parent_widget, "Результат", "Нет товаров, которые встречаются в нескольких лотах.")
-		return None
+	# --- 5. Пересчёт единиц измерения ---
+	def convert_units(row):
+		"""Приводит цену к стандартной единице (например, тонна)."""
+		try:
+			# определение единицы измерения
+			unit = None
+			for col in ['supplier_unit', 'unit']:
+				if col in row and pd.notna(row[col]):
+					unit = str(row[col]).strip().lower()
+					break
+			if not unit:
+				print(f"Внимание: отсутствует единица измерения в строке {row.name}")
+				return None
+			# 2. Проверка цены
+			try:
+				price = float(row['unit_price_eur'])
+				if price <= 0:
+					print(f"Ошибка: некорректная цена ({price}) в строке {row.name}")
+					return None
+			except (ValueError, TypeError):
+				print(f"Ошибка: нечисловая цена в строке {row.name}")
+				return None
+			
+			# 3. Логика конвертации
+			CONVERSION_RATES = {
+				'кг': 1000,  # кг → тонны
+				'kg': 1000,
+				'г': 1000000,  # граммы → тонны
+				'gram': 1000000,
+				'м': lambda x: 1 / (weight_calculator(x) if weight_calculator(x) else None),
+				'метр': lambda x: 1 / (weight_calculator(x) if weight_calculator(x) else None)
+			}
+			
+			if unit in CONVERSION_RATES:
+				rate = CONVERSION_RATES[unit]
+				return price * rate if isinstance(rate, (int, float)) else rate(row)
+			else:
+				return price
+		except Exception as e:
+			print(f"Критическая ошибка в строке {row.name}: {str(e)}")
+			return None
+	def clean_sheet_name(name):
+		"""Очищает название листа от недопустимых Excel символов."""
+		# Удаляем запрещенные символы: []:*?/\
+		cleaned = re.sub(r'[\[\]:*?/\\]', '', name)
+		# Обрезаем до 31 символа (ограничение Excel)
+		return cleaned[:31]
 	
-	# Создаём итоговую таблицу
-	result_table = []
-	
-	# Обрабатываем повторяющиеся товары
-	for good_name in repeated_goods.index:
-		# Фильтруем данные для текущего товара
-		filtered_goods = mydata_df[mydata_df['good_name'] == good_name]
-		
-		# Преобразование единиц измерения
-		for index, row in filtered_goods.iterrows():
-			unit = row['supplier_unit']  # Единица измерения поставщика (метр, тонна и т.д.)
-			if unit == "м":
-				# персчитываем метры в тонны
-				weight_per_unit = weight_calculator(row)  # Функция вычисления веса метра
-				
-				if weight_per_unit:
-					filtered_goods.at[index, 'unit_price_eur'] = row['unit_price_eur'] / weight_per_unit
-					
-			elif unit == 'кг':
-				# перерасчет кг в тонны
-				filtered_goods.at[index, 'unit_price_eur'] = row['unit_price_eur'] * 1000  # 1 т = 1000 кг
-		
-		# Группируем по поставщикам
-		supplier_data = (
-			filtered_goods.groupby('winner_name')
-			.agg(
-				avg_unit_price=('unit_price_eur', 'mean'),
-				lot_numbers=('lot_number', lambda x: ', '.join(map(str, x.unique()))),
-				lots_count=('lot_number', 'nunique')
-			)
-			.reset_index()
-		)
-		
-		# Добавляем информацию о товаре в таблицу
-		supplier_data['good_name'] = good_name
-		result_table.append(supplier_data)
+	mydata_df['unit_price_eur_std'] = mydata_df.apply(convert_units, axis=1)
+	mydata_df.dropna(subset=['unit_price_eur_std'], inplace=True)
 	update_progress.emit(40)
 	
-	# Объединяем все данные в одну таблицу
-	final_table = pd.concat(result_table, ignore_index=True)
+	# --- 6. Агрегация данных по поставщикам ---
+	result_tables = []
 	
-	# Сортируем по товару и средней цене
-	final_table = final_table.sort_values(by=['good_name', 'avg_unit_price'], ascending=[True, True])
+	for good_name in filtered_goods:
+		good_data = mydata_df[mydata_df['good_name'] == good_name]
+		
+		supplier_stats = good_data.groupby('winner_name').agg({
+			'unit_price_eur_std': ['mean', 'median', 'min', 'max', 'std'],
+			'lot_number': ['nunique', lambda x: ', '.join(map(str, x.unique()))],
+			'supplier_qty': 'sum',
+			'close_date': 'max'  # Дата последней поставки
+		}).reset_index()
+		
+		# Переименование столбцов
+		supplier_stats.columns = [
+			'winner_name',
+			'avg_unit_price',
+			'median_price',
+			'min_price',
+			'max_price',
+			'price_std',
+			'lots_count',
+			'lot_numbers',
+			'total_quantity',
+			'last_purchase_date'
+		]
+		
+		supplier_stats['good_name'] = good_name
+		result_tables.append(supplier_stats)
 	update_progress.emit(60)
 	
-	# Сохраняем таблицу в Excel
+	# --- 7. Сохранение результатов ---
+	final_table = pd.concat(result_tables, ignore_index=True)
+	final_table = final_table.sort_values(
+		by=['good_name', 'avg_unit_price'],
+		ascending=[True, True]
+	)
+	
+	# Сохранение в Excel с несколькими листами
 	timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 	excel_file = os.path.join(output_folder, f"supplier_analysis_{timestamp}.xlsx")
-	final_table.to_excel(excel_file, index=False)
-	# print(f"Результаты сохранены в файл: {excel_file}")
-	update_progress.emit(70)
 	
-	# создаем графики для каждого товара
-	for good_name in repeated_goods.index:
-		filtered_data = final_table[final_table['good_name'] == good_name]
-		create_plot_graf(good_name, filtered_data, output_folder)
+	with pd.ExcelWriter(excel_file) as writer:
+		# Сводный отчёт
+		final_table.to_excel(writer, sheet_name="Summary", index=False)
+		
+		# Отдельные листы для каждого товара
+		for good_name in filtered_goods:
+			good_data = final_table[final_table['good_name'] == good_name]
+			if not good_data.empty:
+				try:
+					sheet_name = clean_sheet_name(good_name)
+					good_data.to_excel(writer, sheet_name=sheet_name, index=False)
+				except Exception as e:
+					print(f"Не удалось создать лист для товара {good_name}: {str(e)}")
+					
+			# sheet_name = good_name[:30]  # Ограничение длины имени листа
+			# good_data.to_excel(writer, sheet_name=sheet_name, index=False)
+	update_progress.emit(80)
 	
-	# Завершаем прогресс
+	# --- 8. Визуализация ---
+	for good_name in filtered_goods:
+		try:
+			if 'tруба' in good_name.lower():
+				# Нормализация названия (на всякий случай)
+				normalized_name = good_name.lower().replace('t', 'т')
+				
+				# Получаем данные только для текущего товара
+				good_data = final_table[final_table['good_name'] == normalized_name]
+			else:
+				good_data =  final_table[final_table['good_name'] == good_name]
+			
+			# Проверяем, что данные не пустые
+			if good_data.empty:
+				print(f"Нет данных для визуализации товара: {good_name}")
+				continue  # Пропускаем эту итерацию
+			
+			# Проверяем наличие необходимых столбцов
+			required_columns = ['avg_unit_price', 'min_price', 'max_price']
+			missing_cols = [col for col in required_columns if col not in good_data.columns]
+			if missing_cols:
+				print(f"Отсутствуют столбцы {missing_cols} для товара {good_name}")
+				continue
+			
+			# Создаём график
+			create_plot_graf(
+				good_name,
+				good_data,
+				output_folder,
+			)
+		
+		except Exception as e:
+			print(f"Ошибка при обработке товара {good_name}: {str(e)}")
+			continue  # Продолжаем цикл со следующим товаром
 	update_progress.emit(100)
-	return
+	
+	print(f"Анализ завершён. Результаты сохранены в: {excel_file}")
+	return final_table

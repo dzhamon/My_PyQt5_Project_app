@@ -41,7 +41,7 @@ class Tab3Widget(QWidget):
 		self.layout.addWidget(self.end_date_edit, 1, 1)
 		
 		# Кнопка применения диапазона дат
-		self.apply_button = QPushButton("Выбрать диапазон дат загрузки Контрактов")
+		self.apply_button = QPushButton("Загрузить Контракты из выбранного диапазона дат")
 		self.apply_button.clicked.connect(self.apply_date_filter)
 		self.layout.addWidget(self.apply_button, 2, 0, 1, 2)
 		
@@ -59,9 +59,9 @@ class Tab3Widget(QWidget):
 		start_date = self.start_date_edit.date().toPyDate()
 		end_date = self.end_date_edit.date().toPyDate()
 		
-		# Преобразуем даты в datetime64[ns]
-		start_date = pd.to_datetime(start_date)
-		end_date = pd.to_datetime(end_date)
+		# # Преобразуем даты в datetime64[ns]
+		# start_date = pd.to_datetime(start_date)
+		# end_date = pd.to_datetime(end_date)
 		
 		# Проверяем корректность диапазона дат
 		if start_date > end_date:
@@ -69,23 +69,41 @@ class Tab3Widget(QWidget):
 			                    "Начальная дата позже конечной даты. Проверьте корректность значений")
 			return
 		
-		# Загружаем данные из warehouses_remnants по выбранным датам
+		# Загружаем данные из data_contract по выбранным датам
 		db_path = SQL_PATH
 		conn = sqlite3.connect(db_path)
+		cursor = conn.cursor()
+		
+		# Проверяем, есть ли в таблице data_contract записи с такими датами
+		cursor.execute("""
+				       SELECT COUNT(*) FROM data_contract
+				       WHERE DATE(contract_signing_date) BETWEEN DATE(?) AND DATE(?);
+				   """, (start_date, end_date))
+		
+		count = cursor.fetchone()[0]
+		
+		if count == 0:
+			QMessageBox.warning(self, "Ошибка",
+			                    "В выбранном диапазоне нет данных. Измените даты.")
+			conn.close()
+			# Сброс дат на значения по умолчанию
+			self.start_date_edit.setDate(QDate.currentDate().addMonths(-1))
+			self.end_date_edit.setDate(QDate.currentDate())
+			return
+		# Если данные есть - загружаем их
 		query = f"""
 				SELECT * FROM data_contract
-				WHERE DATE(contract_signing_date) BETWEEN DATE('{start_date}') AND DATE('{end_date}');
-					"""
+				WHERE DATE(contract_signing_date) BETWEEN DATE(?) AND DATE(?);
+				"""
 		# Загрузка данных в датафрейм
-		self.contract_df = pd.read_sql_query(query, conn)
+		self.contract_df = pd.read_sql_query(query, conn, params=(start_date, end_date))
 		# закрыть соединение с базой данных
 		conn.close()
 		
 		self.contract_df = clean_contract_data(self.contract_df)  # очистка данных полученного df
 		
-		# Испускаем сигнал с данными
+		# Испускаем сигнал с данными и выводим в Tab4
 		self.filtered_contracts_changed.emit(self.contract_df)
-		
 		self.display_data(self.contract_df)
 		
 	def display_data(self, contract_df):

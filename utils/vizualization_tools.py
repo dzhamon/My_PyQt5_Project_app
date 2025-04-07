@@ -1,5 +1,7 @@
 import os
+import re
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import seaborn as sns
 import gc
 import pandas as pd
@@ -9,33 +11,66 @@ from utils.functions import clean_filename
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem
 
 def create_plot_graf(good_name, filtered_data, output_folder):
-    print("запускается метод create_plot")
-    """
-       Создаёт график для анализа цен поставщиков и сохраняет его в указанную папку.
-
-       :param good_name: Название товара.
-       :param filtered_data: Данные для визуализации (DataFrame).
-       :param output_folder: Папка для сохранения графика.
-       """
-    # Очищаем good_name от запрещённых символов
-    cleaned_good_name = clean_filename(good_name)
-    
-    # Создаём путь для графика
-    png_file = os.path.join(output_folder, f"{cleaned_good_name}_price_analysis.png".replace("/", "_"))
+    print("\n--- Начало создания графика ---")
+    print(f"Товар: {good_name}")
+    print(f"Данные:\n{filtered_data[['winner_name', 'avg_unit_price']]}")
     
     try:
-        # Используем функцию визуализации из модуля
-        plot_bar_chart(
-            x=filtered_data['winner_name'],
-            y=filtered_data['avg_unit_price'],
-            title=f'Средняя цена за единицу для товара: {good_name}',
-            x_label='Поставщик',
-            y_label='Средняя цена за единицу (EUR)',
-            output_file=png_file
+        # 1. Проверка данных
+        if filtered_data.empty:
+            raise ValueError("Пустой DataFrame")
+        
+        if 'winner_name' not in filtered_data.columns or 'avg_unit_price' not in filtered_data.columns:
+            raise ValueError("Отсутствуют необходимые столбцы")
+        
+        # 2. Очистка данных
+        plot_data = filtered_data.dropna(subset=['winner_name', 'avg_unit_price']).copy()
+        plot_data['avg_unit_price'] = pd.to_numeric(plot_data['avg_unit_price'], errors='coerce')
+        plot_data = plot_data.dropna(subset=['avg_unit_price'])
+        
+        if plot_data.empty:
+            raise ValueError("Нет валидных данных после очистки")
+        
+        # 3. Подготовка пути
+        cleaned_good_name = re.sub(r'[\\/*?:"<>|]', "_", good_name)  # Более строгая очистка
+        os.makedirs(output_folder, exist_ok=True)
+        png_file = os.path.join(output_folder, f"{cleaned_good_name}_price_analysis.png")
+        print(f"Путь для сохранения: {png_file}")
+        
+        # 4. Создание графика
+        plt.figure(figsize=(12, 6))
+        bars = plt.bar(
+            x=plot_data['winner_name'],
+            height=plot_data['avg_unit_price'],
+            color='skyblue'
         )
+        
+        # Добавление значений на столбцы
+        for bar in bars:
+            height = bar.get_height()
+            plt.text(
+                bar.get_x() + bar.get_width() / 2.,
+                height,
+                f'{height:.2f}',
+                ha='center',
+                va='bottom'
+            )
+        
+        plt.title(f'Средняя цена за единицу: {good_name[:50]}...', pad=20)
+        plt.xlabel('Поставщик')
+        plt.ylabel('Цена (EUR)')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        
+        # 5. Сохранение и отображение
+        plt.savefig(png_file, dpi=300, bbox_inches='tight')
+        # print(f"График сохранён: {png_file}")
+        # # plt.show()  # Отображение графика
+        plt.close()
+    
     except Exception as e:
-        print(f"Ошибка при создании графика для товара '{good_name}': {e}")
-
+        print(f"!!! Ошибка при создании графика для '{good_name}': {str(e)}")
+    return
 
 
 def plot_bar_chart(x, y, title, x_label, y_label, output_file):
