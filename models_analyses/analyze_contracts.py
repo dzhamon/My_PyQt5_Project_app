@@ -225,13 +225,6 @@ def analyzeNonEquilSums(parent, data_df):
 
 def data_preprocessing_and_analysis(df):
 	import pandas as pd
-	import matplotlib.pyplot as plt
-	import seaborn as sns
-	from statsmodels.tsa.seasonal import seasonal_decompose
-	import logging
-	
-	logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-	logging.info("Начало обработки и анализа данных.")
 	
 	try:
 		# Выбираем из загруженных Контрактов уникальные лоты и
@@ -240,7 +233,7 @@ def data_preprocessing_and_analysis(df):
 		max_date = df['contract_signing_date'].max()
 		min_date = df['contract_signing_date'].min()
 		
-		# привдим даты к обычному формату (ГГ-ММ-ДД)
+		# приводим даты к обычному формату (ГГ-ММ-ДД)
 		max_date_o = max_date.strftime('%Y-%m-%d')
 		min_date_o = min_date.strftime('%Y-%m-%d')
 		
@@ -268,36 +261,51 @@ def data_preprocessing_and_analysis(df):
 		
 		data_kp_df = pd.read_sql_query(query, conn, params=params)
 		conn.close()
-		
+	
 		df['lot_number'] = df['lot_number'].astype(str)  # переводим номера лотов в базе Контрактов в строковый тип
 		data_kp_df['lot_number'] = data_kp_df['lot_number'].astype(str)  # то же самое с базой Лотов
 		
-		data_kp_unique = data_kp_df.drop_duplicates(subset='lot_number', keep='first')
+		data_kp_unique = data_kp_df.drop_duplicates()
 		df_merged = pd.merge(df, data_kp_unique[['lot_number', 'project_name']], on='lot_number', how='left')
-		print(f"Количество строк после объединения: {df_merged.shape[0]}")
-		print(df_merged.head())
 		
-		# Далее необходимо все df заменить на df_merjed
+		# В df_merged обнаружены строки, где project_name_x = NA и project_name_y = nan.
+		# Это говорит о том, что присутствуют контракты без их Лот-проработки. Нужно всех их выделить
+		# в отдельный датафрейм.
+		
+		# Определим строки, подлежащие удалению из df_merged
+		contracts_to_remove_mask = (
+		    (df_merged['project_name_x'].isna() | (df_merged['project_name_x'] == 'NA')) &
+		    df_merged['project_name_y'].isna()
+		)
+		# и создадим датафрейм с контрактами без лотов
+		cont_less_lots_df = df_merged[contracts_to_remove_mask].copy()
+		# по-хорошему, имея доступ к базе 1С можно было-ба организовать
+		# автоматическую сверку data_kp на предмет отсутствующих Лотов
+		
+		# удалим столбец project_name_y и переименуем project_name_x в project_name
+		df_merged.drop(columns=['project_name_y'], inplace=True)
+		df_merged.rename(columns={'project_name_x': 'project_name'}, inplace=True)
+		
 		# Преобразование дат с обработкой ошибок
-		logging.info('Преобразование столбцов дат')
+		# logging.info('Преобразование столбцов дат')
 		df_merged['contract_signing_date'] = pd.to_datetime(df_merged['contract_signing_date'], errors='coerce')
 		df_merged['lot_end_date'] = pd.to_datetime(df_merged['lot_end_date'], errors='coerce')
 		
 		# Удаление строк с некорректными датами
-		logging.info("Удаление строк с некорректными данными")
+		# logging.info("Удаление строк с некорректными датами")
 		df_merged = df_merged.dropna(subset=['contract_signing_date'])
 		
 		# Удаление дубликатов и пропусков в ключевых столбцах
-		logging.info('Удаление дубликатов')
+		# logging.info('Удаление дубликатов')
 		df_merged = df_merged.drop_duplicates()
 		df_merged = df_merged.dropna(subset=['unit_price', 'quantity', 'product_name'])
 		
 		# Фильтрация аномальных значений
-		logging.info('Фильтрация аномальных значений')
+		# logging.info('Фильтрация аномальных значений')
 		df_merged = df_merged[(df_merged['unit_price'] > 0) & (df_merged['quantity'] > 0)]
 		
 		# Добавление временных меток
-		logging.info('Добавление временных меток')
+		# logging.info('Добавление временных меток')
 		df_merged['year_month'] = df_merged['contract_signing_date'].dt.to_period('M')
 		df_merged['year'] = df_merged['contract_signing_date'].dt.year
 		df_merged['month'] = df_merged['contract_signing_date'].dt.month
@@ -316,69 +324,11 @@ def data_preprocessing_and_analysis(df):
 		
 		df_merged['total_contract_amount_eur'] = converted_df['total_contract_amount_eur'].copy()
 		df_merged['unit_price_eur'] = converted_df['unit_price_eur'].copy()
+		
 		return df_merged
 	
 	except Exception as e:
-		logging.error(f"Ошибка при формировании ... : {e}")
-
-
-def show_interactive_trend(filtered_df, output_folder):
-	"""
-   Показывает интерактивный график трендов стоимости контрактов для каждой дисциплины (топ-5 поставщиков).
-   """
-	print('Поный перечень колонок в data_contract ', filtered_df.columns)
-	
-	columns_info = [('unit_price', 'contract_currency', 'unit_price_eur'),
-	                ('total_contract_amount', 'contract_currency', 'total_contract_amount_eur')]
-	# Все затраты переводим в единую валюту Eur
-	converter = CurrencyConverter()
-	filtered_df = converter.convert_multiple_columns(filtered_df, columns_info)
-	
-	# Убедимся, что папка для сохранения существует
-	if not os.path.exists(output_folder):
-		os.makedirs(output_folder)
-	
-	# Получаем уникальные дисциплины
-	disciplines = filtered_df['discipline'].unique()
-	
-	for discipline in disciplines:
-		discipline_df = filtered_df[filtered_df['discipline'] == discipline].copy()
-		discipline_df.loc[:, 'contract_signing_date'] = pd.to_datetime(discipline_df['contract_signing_date'])
-		
-		# Агрегируем данные для общего графика
-		total_trend_data = discipline_df.resample('ME', on='contract_signing_date')['total_contract_amount_eur'].sum()
-		
-		# Сегментация по поставщикам
-		supplier_totals = discipline_df.groupby('counterparty_name')['total_contract_amount_eur'].sum()
-		top_suppliers = supplier_totals.nlargest(5).index  # Топ-5 поставщиков
-		
-		# Проверяем, есть ли хотя бы один поставщик
-		if len(top_suppliers) > 0:
-			# Создание интерактивного графика
-			fig = make_subplots(rows=1, cols=1)
-			
-			# Добавляем общий график стоимости всех контрактов
-			fig.add_trace(go.Scatter(x=total_trend_data.index, y=total_trend_data.values,
-			                         mode='lines', name='Общая стоимость контрактов',
-			                         line=dict(color='black', width=2)))
-			
-			# Добавляем графики для каждого поставщика
-			for supplier in top_suppliers:
-				supplier_df = discipline_df[discipline_df['counterparty_name'] == supplier]
-				trend_data = supplier_df.resample('ME', on='contract_signing_date')[
-					'total_contract_amount_eur'].sum().fillna(0)
-				fig.add_trace(go.Scatter(x=trend_data.index, y=trend_data.values, mode='lines', name=supplier))
-			
-			# Настройка интерактивности
-			fig.update_layout(title=f'Тренд стоимости контрактов для дисциплины: {discipline}',
-			                  xaxis_title='Дата (год-месяц)', yaxis_title='Общая стоимость контрактов (EUR)',
-			                  hovermode='x unified')
-			
-			# Сохранение графика в HTML
-			output_file = os.path.join(output_folder, f"{discipline}_trend_analysis.html")
-			fig.write_html(output_file)
-		else:
-			print(f"Недостаточно данных для анализа топ-5 поставщиков для дисциплины: {discipline}")
+		print(f"Ошибка при формировании ... : {e}")
 
 
 """

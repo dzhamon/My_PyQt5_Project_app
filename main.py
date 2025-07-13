@@ -4,23 +4,21 @@ from utils.data_model import DataModel
 from utils.clean_datas import clean_database
 from utils.visualizer import KPIVisualizer
 import sys
-import os
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QAction, QInputDialog, QLabel,
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QAction, QDialog, QLabel,
                              QStatusBar, QProgressBar, QTabWidget, QVBoxLayout, QMessageBox, QWidget)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QPoint, QMetaObject
 from PyQt5.QtWidgets import QToolTip
 from PyQt5.QtGui import QFont, QCursor
-from core.signals import PlotEmitter
-from utils.vizualization_tools import create_plot_graf
 
 from widgets.module_tab1 import Tab1Widget
+from widgets.module_tab2 import Tab2Widget
 from widgets.module_tab3 import Tab3Widget
+from widgets.module_tab4 import Tab4Widget
 from widgets.module_tab5 import Tab5Widget
-from widgets.universal_TabWidget import UniversalTabWidget
+from widgets.module_tab6 import Tab6Widget
 from models_analyses.find_alternative_suppliers_enhanced import find_alternative_suppliers_enhanced
 import json
-import pandas as pd
-
+from selection_dialog import SelectionDialog
 
 # Загрузка подсказок из JSON-файла
 def load_menu_hints():
@@ -48,11 +46,9 @@ class AnalysisThread(QThread):
 		                     **self.kwargs)
 
 class MyTabWidget(QWidget):
-	def __init__(self, data_df, contract_df):
+	def __init__(self):
 		super().__init__()
-		self.df_kpi_normalized = None
-		self.data_df = data_df
-		self.contract_df = contract_df
+		# self.df_kpi_normalized = None
 		self.notebook = QTabWidget()
 		layout = QVBoxLayout(self)
 		layout.addWidget(self.notebook)
@@ -85,22 +81,20 @@ class MyTabWidget(QWidget):
 	def handle_analysis_data(self, df):
 		"""Слот для получения данных из Tab2"""
 		self._current_filtered_df = df.copy()
-		print(f"Данные получены из Tab2. Размер: {df.shape}")
+		print(f"Данные получены. Размер: {df.shape}")
 	
 	def setup_tabs(self):
 		# создание отдельных вкладок
-		# tab1 = Tab1Widget(self.data_df)
 		tab1 = Tab1Widget()
 		params_for_tab2 = ['lot_number', 'project_name', 'discipline', 'actor_name', 'winner_name', 'currency',
 		                   'good_name']
-		tab2 = UniversalTabWidget(params_for_tab2)
+		tab2 = Tab2Widget(params_for_tab2)
 		tab2.data_ready_for_analysis.connect(self.handle_analysis_data)
 		tab3 = Tab3Widget()
 		params_for_tab4 = ['lot_number', 'discipline', 'project_name', 'executor_dak', 'counterparty_name',
-		                   'product_name',
-		                   'contract_currency']
-		tab4 = UniversalTabWidget(params_for_tab4)
-		# tab4.data_ready_for_analysis.connect(self.set_filtered_data)
+		                   'product_name', 'contract_currency']
+		tab4 = Tab4Widget(params_for_tab4)
+		tab4.data_ready_for_analysis.connect(self.handle_analysis_data)
 		
 		self._current_filtered_df = None
 		
@@ -108,7 +102,7 @@ class MyTabWidget(QWidget):
 		
 		params_for_tab6 = ['warehouse', 'nomenclature', 'currency', 'stock_category',
 		                   'department', 'project_name', 'date_column']
-		tab6 = UniversalTabWidget(params_for_tab6)
+		tab6 = Tab6Widget(params_for_tab6)
 		
 		self.notebook.addTab(tab1, 'Данные по Лотам')
 		self.notebook.addTab(tab2, 'Параметры загруженных Лотов')
@@ -120,9 +114,6 @@ class MyTabWidget(QWidget):
 		# подключаем сигнал для взаимодействия между вкладками
 		tab1.filtered_data_changed.connect(tab2.update_data)
 		tab3.filtered_data_changed.connect(tab4.update_data)
-		# Подключение сигнала от Tab3 к Tab4 для передачи отфильтрованных контрактов
-		# tab3.filtered_contracts_changed.connect(tab4.update_data)
-		# tab3.filtered_data_changed.connect(tab4.update_data)
 		tab5.filtered_data_changed.connect(tab6.update_data)
 		print("MyTabWidget: Вкладки успешно созданы")  # Отладочный принт
 
@@ -138,7 +129,7 @@ class Window(QMainWindow):
 		self.menu_hints = load_menu_hints()
 		
 		# Создание и установка вкладок
-		self.tab_widget = MyTabWidget(self.data_df, self.contract_df)
+		self.tab_widget = MyTabWidget()
 		self.setCentralWidget(self.tab_widget)
 		
 		# Подключение сигнала для обновления данных между вкладками
@@ -148,25 +139,23 @@ class Window(QMainWindow):
 		
 		# Подключение сигнала для получения отфильтрованных данных
 		tab2_widget = self.tab_widget.notebook.widget(1)  # Получаем второй виджет вкладки (Tab2)
-		if isinstance(tab2_widget, UniversalTabWidget):
+		if isinstance(tab2_widget, Tab2Widget):
 			tab2_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Подключение сигнала для обновления данных между вкладками
 		tab3_widget = self.tab_widget.notebook.widget(2)  # получаем Tab3Widget
+		# if isinstance(tab3_widget, Tab3Widget):
+		# 	tab3_widget.filtered_data_changed.connect(self.update_tab3_data())
 		tab4_widget = self.tab_widget.notebook.widget(3)
 		# if isinstance(tab3_widget, Tab3Widget) and isinstance(tab4_widget, UniversalTabWidget):
 		# 	tab3_widget.filtered_data_changed.connect(tab4_widget.on_filtered_contracts_received)
-		if isinstance(tab4_widget, UniversalTabWidget):
+		if isinstance(tab4_widget, Tab4Widget):
 			tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 			
 		
 		tab5_widget = self.tab_widget.notebook.widget(4)
 		if isinstance(tab5_widget, Tab5Widget):
 			tab5_widget.filtered_data_changed.connect(self.set_filtered_data)
-		
-		tab6_widget = self.tab_widget.notebook.widget(5)
-		if isinstance(tab6_widget, UniversalTabWidget):
-			tab6_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 		
 		# Настройка главного окна
 		self.setFont(QFont("Arial", 12))
@@ -436,16 +425,6 @@ class Window(QMainWindow):
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 	
-	# def run_clasteranalyze(self):
-	# 	# Метод классификации исполнителей и поставщиков
-	# 	if self._current_filtered_df is not None:
-	# 		# здесь логика подготовки данных и непосредственно анализа
-	# 		from models_analyses.data_clastering_analyze import unique_discip_actor_lots, analyze_suppliers
-	# 		lots_per_actor = unique_discip_actor_lots(self._current_filtered_df)
-	# 		supplier_stats = analyze_suppliers(self, lots_per_actor)
-	# 	else:
-	# 		QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
-	
 	def run_ClusterAnalyze(self):
 		# Метод для классификации исполнителей с обучением методом SeedKMeans
 		if self._current_filtered_df is not None:
@@ -486,6 +465,7 @@ class Window(QMainWindow):
 		if self._current_filtered_df is not None:
 			from models_analyses.analysis import analyze_supplier_frequency
 			analyze_supplier_frequency(self._current_filtered_df)
+			self.on_analysis_finished()
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 	
@@ -495,7 +475,7 @@ class Window(QMainWindow):
 			print("Запуск сетевого анализа")
 			from models_analyses.analysis import network_analysis
 			network_analysis(self, self._current_filtered_df)
-		# print(result)
+			self.on_analysis_finished()
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 	
@@ -510,31 +490,31 @@ class Window(QMainWindow):
 		print("Запуск поиска несоответствий сумм")
 		from models_analyses.analyze_contracts import analyzeNonEquilSums
 		analyzeNonEquilSums(self, self._current_filtered_df)
+		self.on_analysis_finished()
 		
 	def run_trend_analyses(self):
-		OUT_DIR = ''
 		if not hasattr(self, '_current_filtered_df') or self._current_filtered_df.empty:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа!")
 			return
 		else:
-			from models_analyses.analyze_contracts import data_preprocessing_and_analysis, show_interactive_trend
-			print('Пересылаем этот датафрейм')
-			print(self._current_filtered_df)
-			show_interactive_trend(self._current_filtered_df, output_folder=r"D:\contracts_trend_analyses")
 			from models_analyses.analyze_contracts import data_preprocessing_and_analysis
+			# Удалим в датафрейме self._current_filtered_df строки-дубликаты если они есть
+			self._current_filtered_df = self._current_filtered_df.drop_duplicates()
 			df_merged = data_preprocessing_and_analysis(self._current_filtered_df)
 			
-			from widgets.trend_analyze_prepare_widget import TrendAnalyzeWidget
-			param_list =  ['project_name', 'discipline', 'product_name']
-			self.trend_widget = TrendAnalyzeWidget(param_list, parent=self)
-			self.trend_widget.update_data(df_merged)
-			self.trend_widget.show()
-	
+			dialog = SelectionDialog(df_merged=df_merged, parent=self)
+			dialog.exec_()
+			
 	# построение множественной регресии и корреляционный анализ
 	def run_prophet_and_arima(self):
-		from models_analyses.regression_analyses import regresion_analyses
-		# в метод регрессионного анализа отправляем отфильтрованный _current_filtered_df и общую базу контрактов
-		regresion_analyses(self._current_filtered_df, self.contract_df) # --------- contract_df подгрузить-------------
+		# загружаем контракты с заданным диапазоном дат
+		if not hasattr(self, '_current_filtered_df') or self._current_filtered_df.empty:
+			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа!")
+			return
+		else:
+			from models_analyses.regression_analyses import regression_analysis_month_by_month
+			# в метод регрессионного анализа отправляем отфильтрованный _current_filtered_df
+			regression_analysis_month_by_month(self._current_filtered_df) # --------- contract_df подгрузить-------------
 	
 	# анализ контрактов без соответствующих лотов
 	def run_contracts_less_dates(self):
@@ -544,7 +524,7 @@ class Window(QMainWindow):
 	
 	def run_efficiency_analyses(self):
 		from models_analyses.efficiency_analyses import main_method
-		main_method(self.filtered_df, self.data_df) # ------------------------ разобраться в датафреймах по алгоритму анализа
+		main_method(self.filtered_df, self.data_df)
 	
 	def run_analyze_by_unit_price(self):
 		"""
@@ -552,7 +532,7 @@ class Window(QMainWindow):
 		"""
 		self.start_analysis(
 			analysis_task=self._analyze_by_unit_price_task,
-			on_finished_callback=self.on_analysis_finished
+			on_finished_callback=self.on_analysis_finished()
 		)
 	
 	def handle_plot(self, title, figure):

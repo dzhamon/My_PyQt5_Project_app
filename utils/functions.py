@@ -68,7 +68,10 @@ def cleanDataDF(data_df):
 		'не использовать NEW FORMAT TASHKENT': 'NEW FORMAT TASHKENT',
 		'не использовать NASIBA GAVHAR': 'NASIRA GAVHAR',
 		'Daromad Munira Fayz Textile<не использовать>': 'Daromad Munira Fayz',
-		'СП ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ AZIA METALL PROF': 'СП OOO AZIA METAL PRPF'
+		'СП ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ AZIA METALL PROF': 'СП OOO AZIA METAL PRPF',
+		'ТОРГОВЫЙ ДОМ ОМСКИЙ ЗАВОД ТРУБОПРОВОДНОЙ АРМАТУРЫ ООО' : 'ООО ОМСКИЙ ЗАВОД ТРУБ АРМАТ',
+		'ОМСКИЙ ЗАВОД ЗАПОРНОЙ АРМАТУРЫ ООО': 'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ',
+		'ООО «Омский завод запорной арматуры»': 'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ'
 	})
 	
 	return data_df

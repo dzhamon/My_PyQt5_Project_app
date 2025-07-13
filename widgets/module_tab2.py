@@ -1,28 +1,15 @@
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QWidget, QListWidget, QMessageBox, QLineEdit,
                              QVBoxLayout, QPushButton, QTableView, QDialog, QAbstractItemView)
-from PyQt5.QtCore import pyqtSignal, QTimer
+from PyQt5.QtCore import pyqtSignal
 from utils.PandasModel_previous import PandasModel
 import pandas as pd
 
-
-class UniversalTabWidget(QWidget):
+class Tab2Widget(QWidget):
 	data_ready_for_analysis = pyqtSignal(pd.DataFrame)
 	
-	def on_filtered_contracts_received(self, filtered_df):
-		""" Слот для обновления данных на основе сигнала от Tab3 """
-		print("Получены фильтрованные данные из Tab3")
-		print("on_filtered_contracts_received вызван")
-		if not isinstance(filtered_df, pd.DataFrame):
-			print("Ошибка: Данные не являются DataFrame")
-			return
-		print(f"Получен DataFrame с {len(filtered_df)} строками и колонками: {filtered_df.columns.tolist()}")
-		self.update_data(filtered_df)
-	
-	def __init__(self, params_for_tab, use_timer=False, receive_data_slot=None):
+	def __init__(self, params_for_tab2):
 		super().__init__()
-		self.params = params_for_tab
-		self.use_timer = use_timer  # Параметр для включения таймера
-		self.receive_data_slot = receive_data_slot  # Параметр для слота получения данных
+		self.params = params_for_tab2
 		
 		# Создание основного макета
 		self.layout = QVBoxLayout(self)
@@ -32,7 +19,7 @@ class UniversalTabWidget(QWidget):
 		
 		# Создание макета для списков (горизонтальный макет)
 		list_layout = QHBoxLayout()
-		# Инициализация списков и кнопок "Очистить"
+		# Инициализация 6 списков и кнопок "Очистить"
 		self.init_list_widgets(list_layout)
 		
 		# Создание кнопки для выполнения запроса
@@ -44,61 +31,24 @@ class UniversalTabWidget(QWidget):
 		self.layout.addWidget(self.execute_button)
 		self.setLayout(self.layout)  # Устанавливаем основной макет
 	
-	def filter_listbox(self, text, list_widget):
-		"""
-		Фильтрует элементы в списке на основе текста, сохраняя полный список.
-		"""
-		# Получаем полный список элементов
-		if not hasattr(list_widget, 'full_list'):
-			list_widget.full_list = [list_widget.item(row).text() for row in range(list_widget.count())]
-		
-		# Фильтруем элементы
-		filtered_items = [item for item in list_widget.full_list if text.lower() in item.lower()]
-		
-		# Очищаем текущий виджет
-		list_widget.clear()
-		list_widget.addItems(filtered_items)
-	
-	def update_data(self, filtered_df):
-		"""
-		Обновляет данные в QListWidget и включает их для выбора.
-		"""
-		if filtered_df.empty:
-			print("Получен пустой DataFrame.")
-			self.clear_list_widgets()
-			return
-		
-		self.filtered_df = filtered_df  # Сохраняем отфильтрованный DataFrame
-		
-		# Заполняем QListWidget уникальными значениями из DataFrame
-		for col, (list_widget, search_entry) in self.list_widgets.items():
-			list_widget.clear()
-			unique_values = sorted(filtered_df[col].dropna().unique())
-			list_widget.addItems([str(value) for value in unique_values])
-			search_entry.clear()
-			
-			# Сбрасываем full_list для обновленных данных
-			list_widget.full_list = [str(value) for value in unique_values]
-	
 	def send_data_to_analysis(self):
 		"""
-		Передает отфильтрованные данные в модуль анализа.
-		"""
+			Передает отфильтрованные данные в модуль анализа
+			"""
 		if hasattr(self, 'filtered_df_to_analyze') and not self.filtered_df_to_analyze.empty:
 			self.data_ready_for_analysis.emit(self.filtered_df_to_analyze)
-			QMessageBox.information(self, "Успех", "Данные успешно переданы на анализ")
 		else:
 			QMessageBox.warning(self, "Ошибка", "Нет данных для анализа")
 	
 	def init_list_widgets(self, layout):
 		"""
-		Инициализирует QListWidget и кнопки "Очистить", добавляет их в горизонтальный макет.
+		Инициализирует 6 QListWidget и кнопки "Очистить", добавляет их в горизонтальный макет.
 		"""
 		for name in self.params:
 			widget_layout = QVBoxLayout()  # Используем вертикальный макет для метки, списка и кнопки "Очистить"
 			label = QLabel(f"Выберите {name}:")
 			search_entry = QLineEdit(self)
-			search_entry.setPlaceholderText(f"Поиск по {name}...")
+			search_entry.setPlaceholderText("Начните вводить для поиска...")
 			search_entry.show()
 			
 			list_widget = QListWidget()
@@ -106,7 +56,6 @@ class UniversalTabWidget(QWidget):
 			list_widget.setSelectionMode(QListWidget.MultiSelection)  # Поддержка множественного выбора
 			list_widget.show()
 			self.list_widgets[name] = (list_widget, search_entry)
-			
 			# Привязываем поиск к строке поиска
 			search_entry.textChanged.connect(lambda text, lw=list_widget: self.filter_listbox(text, lw))
 			
@@ -121,6 +70,45 @@ class UniversalTabWidget(QWidget):
 			widget_layout.addWidget(clear_button)
 			layout.addLayout(widget_layout)
 	
+	def filter_listbox(self, text, list_widget):
+		"""
+		    Фильтрует элементы в списке на основе текста, сохраняя полный список.
+		"""
+		
+		# Получаем полный список элементов
+		if not hasattr(list_widget, 'full_list'):
+			list_widget.full_list = [list_widget.item(row).text() for row in range(list_widget.count())]
+		
+		# Фильтруем элементы
+		filtered_items = [item for item in list_widget.full_list if text.lower() in item.lower()]
+		
+		# Очищаем текущий виджет
+		list_widget.clear()
+		list_widget.addItems(filtered_items)
+		
+		
+	def update_data(self, filtered_df):
+		"""
+		   Обновляет данные в QListWidget и включает их для выбора.
+		   """
+		if filtered_df.empty:
+			print("DataFrame пустой, нечего отображать.")
+			self.clear_list_widgets()
+			return
+		
+		self.filtered_df = filtered_df  # Сохраняем отфильтрованный DataFrame
+		
+		# Заполняем QListWidget уникальными значениями из DataFrame
+		for col, (list_widget, search_entry) in self.list_widgets.items():
+			list_widget.clear()
+			unique_values = sorted(filtered_df[col].dropna().unique())
+			list_widget.addItems([str(value) for value in unique_values])
+			search_entry.clear()
+			
+			# Сбрасываем full_list для обновленных данных
+			list_widget.full_list = [str(value) for value in unique_values]
+		
+		
 	def clear_list_widgets(self):
 		"""
 		Очищает все QListWidget.
@@ -130,14 +118,16 @@ class UniversalTabWidget(QWidget):
 	
 	def clear_selection(self, list_widget):
 		"""
-		Снимает выделение со всех элементов в указанном QListWidget.
-		"""
+		  Снимает выделение и восстанавливает полный список элементов.
+		  """
+		# Сбрасываем выбор
 		list_widget.clearSelection()
 		
 		# Восстанавливаем полный список элементов
 		if hasattr(list_widget, 'full_list'):
 			list_widget.clear()
 			list_widget.addItems(list_widget.full_list)
+		
 	
 	def show_filtered_data(self):
 		"""

@@ -471,6 +471,7 @@ def analyze_top_suppliers(parent_widget, df, start_date, end_date, project_name)
 
 # DataFrame называется df и содержит столбцы 'discipline', 'actor_name', 'winner_name'
 
+# Добавление процентного соотношения
 def analyze_supplier_frequency(df, output_dir="D:/Analysis-Results/Supplier-Frequency", threshold=1):
 	import os
 	import matplotlib.pyplot as plt
@@ -479,44 +480,34 @@ def analyze_supplier_frequency(df, output_dir="D:/Analysis-Results/Supplier-Freq
 	# Группировка данных
 	grouped_df = df.groupby(['discipline', 'actor_name', 'winner_name']).size().reset_index(name='win_count')
 	
+	# Добавляем общее количество закупок по (discipline, actor_name)
+	total_counts = grouped_df.groupby(['discipline', 'actor_name'])['win_count'].transform('sum')
+	grouped_df['win_percentage'] = (grouped_df['win_count'] / total_counts * 100).round(2)
+	
 	# Сортировка данных
 	top_suppliers = grouped_df.sort_values(by=['discipline', 'actor_name', 'win_count'], ascending=[True, True, False])
 	
-	# Вывод информации
-	print("Частота выигрышей поставщиков по дисциплинам и исполнителям:")
-	print(top_suppliers)
-	
-	# Визуализация
-	for discipline, group_discipline in top_suppliers.groupby('discipline'):
-		# Создаем папку для текущей дисциплины
+	# Сохранение в Excel с дополнительными метриками
+	grouped_data = top_suppliers.groupby('discipline')
+	for discipline, group_discipline in grouped_data:
 		discipline_dir = os.path.join(output_dir, discipline.replace(" ", "_"))
 		os.makedirs(discipline_dir, exist_ok=True)
-		# Сохраняем данные дисциплины в Excel
+		
 		excel_path = os.path.join(discipline_dir, f"{discipline}_supplier_frequency.xlsx")
 		with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
 			group_discipline.to_excel(writer, index=False, sheet_name='Supplier Frequency')
-		print(f"Сохранен файл Excel: {excel_path}")
 		
-		# Построение графиков для каждой пары (discipline, actor_name)
-		for actor_name, group_actor in group_discipline.groupby('actor_name'):
-			# Фильтрация по threshold
-			group_actor = group_actor[group_actor['win_count'] >= threshold]
-			if group_actor.empty:
-				continue
-			
-			# Построение графика
-			fig, ax = plt.subplots(figsize=(12, 8))
-			ax.bar(group_actor['winner_name'], group_actor['win_count'], color='skyblue')
-			ax.set_title(f'{discipline} ({actor_name})')
-			ax.set_xlabel('Supplier')
-			ax.set_ylabel('Win Count')
-			ax.tick_params(axis='x', rotation=45)
+		# Дополнительный график: топ-10 поставщиков в дисциплине
+		top_10 = group_discipline.groupby('winner_name')['win_count'].sum().nlargest(10)
+		if not top_10.empty:
+			fig, ax = plt.subplots(figsize=(10, 6))
+			top_10.plot(kind='bar', ax=ax, color='skyblue')
+			ax.set_title(f'Top 10 Suppliers in {discipline}')
+			ax.set_ylabel('Total Wins')
 			plt.tight_layout()
-			
-			# Сохранение графика
-			file_path = os.path.join(discipline_dir, f"{actor_name}_supplier_frequency.png")
-			plt.savefig(file_path)
+			plt.savefig(os.path.join(discipline_dir, f"top_10_suppliers_{discipline}.png"))
 			plt.close()
+	
 	return top_suppliers
 
 

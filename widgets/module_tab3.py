@@ -13,7 +13,6 @@ from utils.date_range_selector_new import DateRangeSelector  # Импортир�
 from utils.functions import clean_contract_data
 from utils.PandasModel_previous import PandasModel
 
-
 class Tab3Widget(QWidget):
 	# Cигнал, который будет испускаться при изменении фильтрованных данных
 	filtered_data_changed = pyqtSignal(pd.DataFrame)
@@ -92,30 +91,35 @@ class Tab3Widget(QWidget):
 			self.end_date_edit.setDate(QDate.currentDate())
 			return
 		
-		# Если данные есть - загружаем их
-		query = f"""
-				SELECT * FROM data_contract
-				WHERE DATE(contract_signing_date) BETWEEN DATE(?) AND DATE(?);
-				"""
-		# Загрузка данных в датафрейм
-		self.contract_df = pd.read_sql_query(query, conn, dtype={'lot_number': 'string', 'discipline': 'string',
-		                                                         'contract_name': 'string', 'executor_dak': 'string',
-		                                                         'counterparty_name': 'string',
-		                                                         'product_name': 'string',
-		                                                         'contract_currency': 'string'},
-		                                     params=(start_date, end_date))
-		
+		else:
+			# Если данные есть - загружаем их
+			query = f"""
+					SELECT * FROM data_contract
+					WHERE DATE(contract_signing_date) BETWEEN DATE(?) AND DATE(?);
+					"""
+			# Загрузка данных в датафрейм
+			self.contract_df = pd.read_sql_query(query, conn, dtype={'lot_number': 'string', 'discipline': 'string',
+			                                                         'contract_name': 'string', 'executor_dak': 'string',
+			                                                         'counterparty_name': 'string',
+			                                                         'product_name': 'string',
+			                                                         'contract_currency': 'string'},
+			                                     params=(start_date, end_date))
+			
 		# теперь подтягиваем соответствующие лоты и project_name из data_kp
 		query_kp = "SELECT lot_number, project_name FROM data_kp"
 		kp_df = pd.read_sql(query_kp, conn,  dtype={'lot_number': 'string', 'project_name': 'string'})
+		
+		# удалим дубликаты из kp_df
+		kp_unique_projects = kp_df[['lot_number', 'project_name']].drop_duplicates(subset=['lot_number'])
 		
 		# закрыть соединение с базой данных
 		conn.close()
 		# очистка данных contract_df
 		self.contract_df = clean_contract_data(self.contract_df)  # очистка данных полученного df
+		cont_df = self.contract_df.copy()
 		
 		# объединяем данные
-		self.merged_df = pd.merge(self.contract_df, kp_df, on='lot_number', how='left')  # Важно: how='left'
+		self.merged_df = pd.merge(cont_df, kp_unique_projects, on='lot_number', how='left')  # Важно: how='left'
 		
 		# Испускаем сигнал с данными и выводим в Tab4
 		self.filtered_data_changed.emit(self.merged_df)
